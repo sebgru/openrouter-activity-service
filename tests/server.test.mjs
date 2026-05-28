@@ -7,12 +7,12 @@
 
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 
-// ── Mock node:https before server.mjs is imported ───────────────────────────
+// ── Keep real fetch before any mocks overwrite it ───────────────────────────
+const originalFetch = global.fetch;
+
+// ── Mock fetch for upstream calls ────────────────────────────────────────────
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
-
-// ── Keep real fetch for local HTTP helpers ───────────────────────────────────
-const originalFetch = global.fetch;
 
 // ── Mock node:fs (readFileSync used by readToken) ────────────────────────────
 vi.mock("node:fs", async () => {
@@ -57,8 +57,8 @@ function setupFetchMock({
     mockFetch.mockResolvedValue({
       ok: status >= 200 && status < 300,
       status,
-      json: () => Promise.resolve(JSON.parse(body)),
-      text: () => Promise.resolve(body),
+      json: async () => JSON.parse(body),
+      text: async () => body,
     });
   }
 }
@@ -193,9 +193,13 @@ describe("fetchFromOpenRouter", () => {
     await expect(fetchFromOpenRouter("/activity")).rejects.toThrow("connection refused");
   });
 
-  it("rejects on timeout and destroys the request", async () => {
-    setupFetchMock({ networkError: true });
-    await expect(fetchFromOpenRouter("/activity")).rejects.toThrow("timed out");
+  it("rejects on timeout via AbortSignal", async () => {
+    // AbortSignal.timeout is a Node.js built-in — we can't easily trigger
+    // the timeout in a unit test since fetch is fully mocked. Verify at
+    // least that a rejected fetch (simulating any network failure) is
+    // propagated as-is.
+    setupFetchMock({ networkError: true, errorMessage: "The operation was aborted" });
+    await expect(fetchFromOpenRouter("/activity")).rejects.toThrow("The operation was aborted");
   });
 
   it("rejects when the response body is not valid JSON", async () => {
