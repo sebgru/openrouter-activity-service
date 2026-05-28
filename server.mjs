@@ -60,9 +60,7 @@ async function fetchFromOpenRouter(path, queryString) {
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(
-      `OpenRouter API returned ${res.status}: ${body.slice(0, 500)}`
-    );
+    throw new Error(`OpenRouter API returned ${res.status}: ${body.slice(0, 500)}`);
   }
 
   return res.json();

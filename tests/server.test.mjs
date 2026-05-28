@@ -44,7 +44,12 @@ import {
  * @param {string}  [opts.body='{}']
  * @param {boolean} [opts.networkError=false] - If true, fetch rejects with a network error.
  */
-function setupFetchMock({ status = 200, body = "{}", networkError = false, errorMessage = "connection refused" } = {}) {
+function setupFetchMock({
+  status = 200,
+  body = "{}",
+  networkError = false,
+  errorMessage = "connection refused",
+} = {}) {
   mockFetch.mockReset();
   if (networkError) {
     mockFetch.mockRejectedValue(new Error(errorMessage));
