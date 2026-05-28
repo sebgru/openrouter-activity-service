@@ -81,8 +81,8 @@ Required scopes:
 Create a file with the key value (and nothing else):
 
 ```bash
-echo -n 'sk-or-v1-xxxxxxxxxxxxxxxx' > /home/sebg/openclaw/openrouter-management-token
-chmod 600 /home/sebg/openclaw/openrouter-management-token
+echo -n 'sk-or-v1-xxxxxxxxxxxxxxxx' > /path/to/openrouter-management-token
+chmod 600 /path/to/openrouter-management-token
 ```
 
 ### 3. Run with Docker Compose
@@ -95,7 +95,7 @@ services:
     ports:
       - "8767:8767"
     volumes:
-      - /home/sebg/openclaw/openrouter-management-token:/run/secrets/openrouter-management-token:ro
+      - path/to/openrouter-management-token:/run/secrets/openrouter-management-token:ro
     environment:
       OPENROUTER_ACTIVITY_PORT: "8767"
       OPENROUTER_MGMT_TOKEN_FILE: /run/secrets/openrouter-management-token
