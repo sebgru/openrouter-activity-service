@@ -1,8 +1,12 @@
 # openrouter-activity-service
 
+[![CI](https://github.com/sebgru/openrouter-activity-service/actions/workflows/ci.yml/badge.svg)](https://github.com/sebgru/openrouter-activity-service/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/sebgru/openrouter-activity-service/branch/main/graph/badge.svg)](https://codecov.io/gh/sebgru/openrouter-activity-service)
+[![License: MIT](https://img.shields.io/github/license/sebgru/openrouter-activity-service.svg)](LICENSE)
+
 Lightweight internal microservice that exposes OpenRouter usage/activity and credit data through a simple JSON API.
 
-Sits behind Docker compose so the OpenRouter Management API key stays inside the container — never exposed to the OpenClaw container.
+Sits behind Docker Compose so the OpenRouter Management API key stays inside the container — never exposed to the OpenClaw container.
 
 ## Endpoints
 
@@ -11,6 +15,7 @@ Sits behind Docker compose so the OpenRouter Management API key stays inside the
 Returns per-model usage data for the requested month (aggregated from OpenRouter's daily activity API).
 
 **Response:**
+
 ```json
 {
   "totalRequests": 1234,
@@ -39,6 +44,7 @@ Returns per-model usage data for the requested month (aggregated from OpenRouter
 Returns total credits purchased, used, and remaining.
 
 **Response:**
+
 ```json
 {
   "totalCredits": 100.00,
@@ -63,9 +69,10 @@ Liveness check.
 
 ### 1. Create an OpenRouter Management API key
 
-Go to https://openrouter.ai/settings/keys → "Create Management Key".
+Go to <https://openrouter.ai/settings/keys> → "Create Management Key".
 
 Required scopes:
+
 - `/credits` read — total credits purchased and used
 - `/activity` read — per-model, per-day usage data
 
@@ -114,6 +121,30 @@ curl http://localhost:8767/balance
 |---|---|---|
 | `OPENROUTER_ACTIVITY_PORT` | `8767` | HTTP listen port |
 | `OPENROUTER_MGMT_TOKEN_FILE` | `/run/secrets/openrouter-management-token` | Path to Bearer token file |
+
+## CI/CD
+
+- **CI** (`ci.yml`): Prettier formatting check, ESLint, Vitest unit tests with coverage (≥ 80%), Codecov upload, Trivy container security scan
+- **docker build** (`docker-image.yml`): verifies clean Docker build on every push/PR
+- **docker publish** (`docker-publish.yml`): on version tags (`v*.*.*`), builds and publishes to `ghcr.io/sebgru/openrouter-activity-service` with cosign image signing
+
+## Development
+
+This repository includes a VS Code devcontainer that installs the same local development tools used by CI.
+
+```bash
+# Format
+npm run format
+
+# Lint
+npm run lint
+
+# Tests
+npm test
+
+# Tests with coverage
+npm run test:cov
+```
 
 ## Building
 

@@ -22,7 +22,7 @@
 import http from "node:http";
 import https from "node:https";
 import { readFileSync } from "node:fs";
-import { URL } from "node:url";
+import { URL, fileURLToPath } from "node:url";
 
 const PORT = parseInt(process.env.OPENROUTER_ACTIVITY_PORT || "8767", 10);
 const TOKEN_FILE =
@@ -223,7 +223,7 @@ function sendError(res, status, message) {
   sendJSON(res, status, { error: message });
 }
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -273,8 +273,31 @@ const server = http.createServer(async (req, res) => {
     console.error(`[ERROR] ${err.message}`);
     sendError(res, 502, err.message);
   }
-});
+}
 
-server.listen(PORT, () => {
-  console.log(`openrouter-activity-service listening on port ${PORT}`);
-});
+export function createServer() {
+  return http.createServer(handleRequest);
+}
+
+// ---------- Exports (for testing) ----------
+
+export {
+  readToken,
+  fetchFromOpenRouter,
+  daysInMonth,
+  getUsage,
+  getBalance,
+  sendJSON,
+  sendError,
+  PORT,
+  TOKEN_FILE,
+};
+
+// ---------- Entry point ----------
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const server = createServer();
+  server.listen(PORT, () => {
+    console.log(`openrouter-activity-service listening on port ${PORT}`);
+  });
+}

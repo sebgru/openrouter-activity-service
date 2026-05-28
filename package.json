@@ -1,0 +1,25 @@
+{
+    "name": "openrouter-activity-service",
+    "version": "1.0.0",
+    "description": "Lightweight internal microservice exposing OpenRouter usage/activity and credit data via JSON API.",
+    "type": "module",
+    "scripts": {
+        "start": "node server.mjs",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "test": "vitest run",
+        "test:cov": "vitest run --coverage"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.0.0",
+        "@vitest/coverage-v8": "^2.0.0",
+        "eslint": "^9.0.0",
+        "globals": "^15.0.0",
+        "prettier": "^3.0.0",
+        "vitest": "^2.0.0"
+    },
+    "engines": {
+        "node": ">=22"
+    }
+}
