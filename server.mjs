@@ -63,7 +63,12 @@ async function fetchFromOpenRouter(path, queryString) {
     throw new Error(`OpenRouter API returned ${res.status}: ${body.slice(0, 500)}`);
   }
 
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    const body = await res.text();
+    throw new Error(`Failed to parse OpenRouter response: ${body.slice(0, 200)}`);
+  }
 }
 
 // ---------- Activity / usage aggregation ----------

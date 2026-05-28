@@ -396,14 +396,14 @@ describe("HTTP routes", () => {
   });
 
   it("POST /health returns 405", async () => {
-    const res = await fetch(`${baseUrl}/health`, { method: "POST" });
+    const res = await originalFetch(`${baseUrl}/health`, { method: "POST" });
     const body = await res.json();
     expect(res.status).toBe(405);
     expect(body.error).toMatch(/method not allowed/i);
   });
 
   it("OPTIONS /health returns 204 with CORS headers", async () => {
-    const res = await fetch(`${baseUrl}/health`, { method: "OPTIONS" });
+    const res = await originalFetch(`${baseUrl}/health`, { method: "OPTIONS" });
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
   });
