@@ -11,6 +11,9 @@ import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from "vites
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// ── Keep real fetch for local HTTP helpers ───────────────────────────────────
+const originalFetch = global.fetch;
+
 // ── Mock node:fs (readFileSync used by readToken) ────────────────────────────
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual("node:fs");
@@ -58,7 +61,7 @@ function setupFetchMock({ status = 200, body = "{}", networkError = false, error
 // ── Helper: fire an HTTP request against the live test server ────────────────
 
 async function httpGet(baseUrl, path) {
-  const res = await fetch(`${baseUrl}${path}`);
+  const res = await originalFetch(`${baseUrl}${path}`);
   const text = await res.text();
   let json = null;
   try {
