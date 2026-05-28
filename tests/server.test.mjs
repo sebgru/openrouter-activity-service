@@ -8,9 +8,8 @@
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 
 // ── Mock node:https before server.mjs is imported ───────────────────────────
-vi.mock("node:https", () => ({
-  default: { request: vi.fn() },
-}));
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
 
 // ── Mock node:fs (readFileSync used by readToken) ────────────────────────────
 vi.mock("node:fs", async () => {
@@ -18,7 +17,6 @@ vi.mock("node:fs", async () => {
   return { ...actual, readFileSync: vi.fn() };
 });
 
-import https from "node:https";
 import { readFileSync } from "node:fs";
 
 import {
@@ -37,39 +35,24 @@ import {
 // ── HTTPS mock helper ────────────────────────────────────────────────────────
 
 /**
- * Configure https.request to simulate an OpenRouter API response.
+ * Configure global.fetch to simulate an OpenRouter API response.
  * @param {object} opts
- * @param {number}  [opts.statusCode=200]
+ * @param {number}  [opts.status=200]
  * @param {string}  [opts.body='{}']
- * @param {string|null} [opts.error=null]   - If set, the request emits an error.
- * @param {boolean} [opts.timeout=false]    - If true, the request emits a timeout.
+ * @param {boolean} [opts.networkError=false] - If true, fetch rejects with a network error.
  */
-function setupHttpsMock({ statusCode = 200, body = "{}", error = null, timeout = false } = {}) {
-  https.request.mockImplementation((_opts, callback) => {
-    const reqMock = {
-      on: vi.fn((event, handler) => {
-        if (error && event === "error") process.nextTick(() => handler(new Error(error)));
-        if (timeout && event === "timeout") process.nextTick(() => handler());
-        return reqMock;
-      }),
-      end: vi.fn(),
-      destroy: vi.fn(),
-    };
-
-    if (!error && !timeout) {
-      const resMock = {
-        statusCode,
-        on: vi.fn((event, handler) => {
-          if (event === "data") process.nextTick(() => handler(body));
-          if (event === "end") process.nextTick(() => handler());
-          return resMock;
-        }),
-      };
-      process.nextTick(() => callback(resMock));
-    }
-
-    return reqMock;
-  });
+function setupFetchMock({ status = 200, body = "{}", networkError = false, errorMessage = "connection refused" } = {}) {
+  mockFetch.mockReset();
+  if (networkError) {
+    mockFetch.mockRejectedValue(new Error(errorMessage));
+  } else {
+    mockFetch.mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(JSON.parse(body)),
+      text: () => Promise.resolve(body),
+    });
+  }
 }
 
 // ── Helper: fire an HTTP request against the live test server ────────────────
@@ -178,7 +161,7 @@ describe("fetchFromOpenRouter", () => {
   });
 
   it("resolves with parsed JSON on a successful response", async () => {
-    setupHttpsMock({ body: '{"data": []}' });
+    setupFetchMock({ body: '{"data": []}' });
     const result = await fetchFromOpenRouter("/activity", "date=2026-05-01");
     expect(result).toEqual({ data: [] });
   });
@@ -193,22 +176,22 @@ describe("fetchFromOpenRouter", () => {
   });
 
   it("rejects on a non-2xx status code", async () => {
-    setupHttpsMock({ statusCode: 401, body: '{"error":"unauthorized"}' });
+    setupFetchMock({ status: 401, body: '{"error":"unauthorized"}' });
     await expect(fetchFromOpenRouter("/credits")).rejects.toThrow("401");
   });
 
   it("rejects on a network error", async () => {
-    setupHttpsMock({ error: "connection refused" });
+    setupFetchMock({ networkError: true, errorMessage: "connection refused" });
     await expect(fetchFromOpenRouter("/activity")).rejects.toThrow("connection refused");
   });
 
   it("rejects on timeout and destroys the request", async () => {
-    setupHttpsMock({ timeout: true });
+    setupFetchMock({ networkError: true });
     await expect(fetchFromOpenRouter("/activity")).rejects.toThrow("timed out");
   });
 
   it("rejects when the response body is not valid JSON", async () => {
-    setupHttpsMock({ body: "not-json" });
+    setupFetchMock({ body: "not-json" });
     await expect(fetchFromOpenRouter("/activity")).rejects.toThrow(
       "Failed to parse OpenRouter response"
     );
@@ -224,7 +207,7 @@ describe("getBalance", () => {
   });
 
   it("returns computed balance fields from the API response", async () => {
-    setupHttpsMock({
+    setupFetchMock({
       body: JSON.stringify({ data: { total_credits: 100, total_usage: 42.5 } }),
     });
     const result = await getBalance();
@@ -236,7 +219,7 @@ describe("getBalance", () => {
   });
 
   it("throws when the API response has unexpected shape", async () => {
-    setupHttpsMock({ body: JSON.stringify({ unexpected: true }) });
+    setupFetchMock({ body: JSON.stringify({ unexpected: true }) });
     await expect(getBalance()).rejects.toThrow("Unexpected response from /credits endpoint");
   });
 });
@@ -255,7 +238,7 @@ describe("getUsage", () => {
     expect(result.totalRequests).toBe(0);
     expect(result.totalCost).toBe(0);
     expect(result.models).toHaveLength(0);
-    expect(https.request).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("aggregates activity data across days", async () => {
@@ -274,7 +257,7 @@ describe("getUsage", () => {
       provider_name: "OpenAI",
     };
 
-    setupHttpsMock({ body: JSON.stringify({ data: [activityEntry] }) });
+    setupFetchMock({ body: JSON.stringify({ data: [activityEntry] }) });
 
     const result = await getUsage(year, month);
     expect(result.totalRequests).toBeGreaterThan(0);
@@ -288,7 +271,7 @@ describe("getUsage", () => {
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth() + 1;
 
-    setupHttpsMock({ error: "upstream error" });
+    setupFetchMock({ networkError: true, errorMessage: "upstream error" });
 
     const result = await getUsage(year, month);
     expect(result.errors).toBeDefined();
@@ -364,7 +347,7 @@ describe("HTTP routes", () => {
 
   it("GET /usage returns 502 when upstream call fails", async () => {
     const now = new Date();
-    setupHttpsMock({ error: "upstream unavailable" });
+    setupFetchMock({ networkError: true, errorMessage: "upstream unavailable" });
     const { status } = await httpGet(
       baseUrl,
       `/usage?year=${now.getUTCFullYear()}&month=${now.getUTCMonth() + 1}`
@@ -377,7 +360,7 @@ describe("HTTP routes", () => {
   // ── /balance ─────────────────────────────────────────────────────────────
 
   it("GET /balance returns 200 with balance data", async () => {
-    setupHttpsMock({
+    setupFetchMock({
       body: JSON.stringify({ data: { total_credits: 50, total_usage: 10 } }),
     });
     const { status, body } = await httpGet(baseUrl, "/balance");
@@ -387,7 +370,7 @@ describe("HTTP routes", () => {
   });
 
   it("GET /balance returns 502 on upstream error", async () => {
-    setupHttpsMock({ error: "network failure" });
+    setupFetchMock({ networkError: true, errorMessage: "network failure" });
     const { status } = await httpGet(baseUrl, "/balance");
     expect(status).toBe(502);
   });

@@ -20,7 +20,6 @@
 //     - /activity read — per-model, per-day usage for last 30 days
 
 import http from "node:http";
-import https from "node:https";
 import { readFileSync } from "node:fs";
 import { URL, fileURLToPath } from "node:url";
 
@@ -42,51 +41,31 @@ function readToken() {
 
 // ---------- HTTPS helpers ----------
 
-function fetchFromOpenRouter(path, queryString) {
-  return new Promise((resolve, reject) => {
-    const token = readToken();
-    if (!token) {
-      reject(new Error("OPENROUTER_MGMT_TOKEN_FILE not found or empty"));
-      return;
-    }
+async function fetchFromOpenRouter(path, queryString) {
+  const token = readToken();
+  if (!token) {
+    throw new Error("OPENROUTER_MGMT_TOKEN_FILE not found or empty");
+  }
 
-    const url = new URL(path, `https://${API_HOST}/api/v1`);
-    if (queryString) url.search = queryString;
+  const url = new URL(path, `https://${API_HOST}/api/v1`);
+  if (queryString) url.search = queryString;
 
-    const opts = {
-      hostname: API_HOST,
-      path: url.pathname + url.search,
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 15000,
-    };
-
-    const req = https.request(opts, (res) => {
-      let body = "";
-      res.on("data", (chunk) => (body += chunk));
-      res.on("end", () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`OpenRouter API returned ${res.statusCode}: ${body.slice(0, 500)}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(body));
-        } catch {
-          reject(new Error(`Failed to parse OpenRouter response: ${body.slice(0, 200)}`));
-        }
-      });
-    });
-
-    req.on("error", reject);
-    req.on("timeout", () => {
-      req.destroy();
-      reject(new Error("OpenRouter API request timed out"));
-    });
-    req.end();
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    signal: AbortSignal.timeout(15000),
   });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `OpenRouter API returned ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+
+  return res.json();
 }
 
 // ---------- Activity / usage aggregation ----------
