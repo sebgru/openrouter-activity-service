@@ -22,7 +22,7 @@ Returns per-model usage data for the requested month (aggregated from OpenRouter
   "totalPromptTokens": 500000,
   "totalCompletionTokens": 150000,
   "totalReasoningTokens": 5000,
-  "totalCost": 42.50,
+  "totalCost": 42.5,
   "models": [
     {
       "model": "openai/gpt-4.1",
@@ -30,9 +30,9 @@ Returns per-model usage data for the requested month (aggregated from OpenRouter
       "promptTokens": 200000,
       "completionTokens": 50000,
       "reasoningTokens": 0,
-      "cost": 20.00,
+      "cost": 20.0,
       "providers": {
-        "OpenAI": { "requests": 500, "cost": 20.00 }
+        "OpenAI": { "requests": 500, "cost": 20.0 }
       }
     }
   ]
@@ -47,9 +47,9 @@ Returns total credits purchased, used, and remaining.
 
 ```json
 {
-  "totalCredits": 100.00,
-  "totalUsage": 42.50,
-  "remainingCredits": 57.50
+  "totalCredits": 100.0,
+  "totalUsage": 42.5,
+  "remainingCredits": 57.5
 }
 ```
 
@@ -117,9 +117,9 @@ curl http://localhost:8767/balance
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `OPENROUTER_ACTIVITY_PORT` | `8767` | HTTP listen port |
+| Variable                     | Default                                    | Description               |
+| ---------------------------- | ------------------------------------------ | ------------------------- |
+| `OPENROUTER_ACTIVITY_PORT`   | `8767`                                     | HTTP listen port          |
 | `OPENROUTER_MGMT_TOKEN_FILE` | `/run/secrets/openrouter-management-token` | Path to Bearer token file |
 
 ## CI/CD

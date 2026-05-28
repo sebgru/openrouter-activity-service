@@ -26,8 +26,7 @@ import { URL, fileURLToPath } from "node:url";
 
 const PORT = parseInt(process.env.OPENROUTER_ACTIVITY_PORT || "8767", 10);
 const TOKEN_FILE =
-  process.env.OPENROUTER_MGMT_TOKEN_FILE ||
-  "/run/secrets/openrouter-management-token";
+  process.env.OPENROUTER_MGMT_TOKEN_FILE || "/run/secrets/openrouter-management-token";
 const API_HOST = "openrouter.ai";
 const KNOWN_PATHS = ["/health", "/usage?year=...&month=...", "/balance"];
 
@@ -70,11 +69,7 @@ function fetchFromOpenRouter(path, queryString) {
       res.on("data", (chunk) => (body += chunk));
       res.on("end", () => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(
-            new Error(
-              `OpenRouter API returned ${res.statusCode}: ${body.slice(0, 500)}`
-            )
-          );
+          reject(new Error(`OpenRouter API returned ${res.statusCode}: ${body.slice(0, 500)}`));
           return;
         }
         try {
@@ -125,10 +120,7 @@ async function getUsage(year, month) {
     if (dt < thirtyDaysAgo || dt > today) continue;
 
     try {
-      const result = await fetchFromOpenRouter(
-        `/activity`,
-        `date=${dateStr}`
-      );
+      const result = await fetchFromOpenRouter(`/activity`, `date=${dateStr}`);
       if (result && Array.isArray(result.data)) {
         allActivity.push(...result.data);
       }
@@ -202,8 +194,7 @@ async function getBalance() {
     return {
       totalCredits: result.data.total_credits,
       totalUsage: result.data.total_usage,
-      remainingCredits:
-        result.data.total_credits - result.data.total_usage,
+      remainingCredits: result.data.total_credits - result.data.total_usage,
     };
   }
   throw new Error("Unexpected response from /credits endpoint");

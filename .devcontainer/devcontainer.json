@@ -1,59 +1,57 @@
 {
-    "name": "openrouter-activity-service",
-    // ── Base image ────────────────────────────────────────────────────────────
-    // Standard Microsoft Node.js devcontainer (Node 22 LTS).
-    "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
-    // ── Workspace ─────────────────────────────────────────────────────────────
-    // Mount the repo at /workspace (instead of the default /workspaces/<name>).
-    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
-    "workspaceFolder": "/workspace",
-    // ── Host stubs ────────────────────────────────────────────────────────────
-    // Runs on the HOST before the container is created.
-    // Creates empty placeholder files/dirs if they don't already exist so the
-    // bind mounts below never fail for contributors who don't have these files.
-    "initializeCommand": "mkdir -p ~/.ssh && touch -a ~/.gitconfig ~/.vimrc ~/.profile",
-    // ── Personal dotfile mounts ───────────────────────────────────────────────
-    // .ssh is staged at /tmp/host-ssh; setup.sh copies it with the required
-    // 700/600 permissions (bind mounts can't change permissions).
-    "mounts": [
-        "source=${localEnv:HOME}/.gitconfig,target=/home/node/.gitconfig,type=bind",
-        "source=${localEnv:HOME}/.vimrc,target=/home/node/.vimrc,type=bind",
-        "source=${localEnv:HOME}/.profile,target=/home/node/.profile-host,type=bind,readonly=true",
-        "source=${localEnv:HOME}/.ssh,target=/tmp/host-ssh,type=bind,readonly=true"
-    ],
-    // ── Post-create setup ─────────────────────────────────────────────────────
-    "postCreateCommand": "bash /workspace/.devcontainer/setup.sh",
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                // ESLint: linter (matches CI)
-                "dbaeumer.vscode-eslint",
-                // Prettier: formatter (matches CI)
-                "esbenp.prettier-vscode",
-                // Vitest: test explorer
-                "vitest.explorer",
-                // GitHub Actions syntax support
-                "github.vscode-github-actions"
-            ],
-            "settings": {
-                "terminal.integrated.defaultProfile.linux": "zsh",
-                "terminal.integrated.profiles.linux": {
-                    "zsh": {
-                        "path": "/bin/zsh"
-                    }
-                },
-                "editor.tabSize": 2,
-                "editor.defaultFormatter": "esbenp.prettier-vscode",
-                "editor.formatOnSave": true,
-                "editor.codeActionsOnSave": {
-                    "source.fixAll.eslint": "explicit"
-                },
-                "eslint.enable": true
-            }
-        }
-    },
-    // Forward the service port for running the server inside the container.
-    "forwardPorts": [
-        8767
-    ]
+  "name": "openrouter-activity-service",
+  // ── Base image ────────────────────────────────────────────────────────────
+  // Standard Microsoft Node.js devcontainer (Node 22 LTS).
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  // ── Workspace ─────────────────────────────────────────────────────────────
+  // Mount the repo at /workspace (instead of the default /workspaces/<name>).
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  // ── Host stubs ────────────────────────────────────────────────────────────
+  // Runs on the HOST before the container is created.
+  // Creates empty placeholder files/dirs if they don't already exist so the
+  // bind mounts below never fail for contributors who don't have these files.
+  "initializeCommand": "mkdir -p ~/.ssh && touch -a ~/.gitconfig ~/.vimrc ~/.profile",
+  // ── Personal dotfile mounts ───────────────────────────────────────────────
+  // .ssh is staged at /tmp/host-ssh; setup.sh copies it with the required
+  // 700/600 permissions (bind mounts can't change permissions).
+  "mounts": [
+    "source=${localEnv:HOME}/.gitconfig,target=/home/node/.gitconfig,type=bind",
+    "source=${localEnv:HOME}/.vimrc,target=/home/node/.vimrc,type=bind",
+    "source=${localEnv:HOME}/.profile,target=/home/node/.profile-host,type=bind,readonly=true",
+    "source=${localEnv:HOME}/.ssh,target=/tmp/host-ssh,type=bind,readonly=true"
+  ],
+  // ── Post-create setup ─────────────────────────────────────────────────────
+  "postCreateCommand": "bash /workspace/.devcontainer/setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // ESLint: linter (matches CI)
+        "dbaeumer.vscode-eslint",
+        // Prettier: formatter (matches CI)
+        "esbenp.prettier-vscode",
+        // Vitest: test explorer
+        "vitest.explorer",
+        // GitHub Actions syntax support
+        "github.vscode-github-actions"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          }
+        },
+        "editor.tabSize": 2,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "eslint.enable": true
+      }
+    }
+  },
+  // Forward the service port for running the server inside the container.
+  "forwardPorts": [8767]
 }

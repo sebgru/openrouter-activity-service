@@ -9,6 +9,10 @@ sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends vim
 
 # ── Dev tools ─────────────────────────────────────────────────────────────────
 echo "→ Installing dev tools (npm install)…"
+# node_modules and package-lock.json may be owned by root if a prior container
+# run or image layer executed npm install as root.  Fix ownership first so that
+# the npm install below (running as the 'node' user) can write to them.
+sudo chown -R node:node /workspace/node_modules /workspace/package-lock.json /workspace/coverage 2>/dev/null || true
 cd /workspace && npm install
 
 # ── SSH keys ──────────────────────────────────────────────────────────────────
