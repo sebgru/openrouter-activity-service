@@ -47,7 +47,7 @@ async function fetchFromOpenRouter(path, queryString) {
     throw new Error("OPENROUTER_MGMT_TOKEN_FILE not found or empty");
   }
 
-  const url = new URL(path, `https://${API_HOST}/api/v1`);
+  const url = new URL(path.replace(/^\//, ""), `https://${API_HOST}/api/v1/`);
   if (queryString) url.search = queryString;
 
   const res = await fetch(url, {

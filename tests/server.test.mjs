@@ -208,6 +208,14 @@ describe("fetchFromOpenRouter", () => {
       "Failed to parse OpenRouter response"
     );
   });
+
+  it("constructs the correct URL including /api/v1/ prefix", async () => {
+    setupFetchMock({ body: '{"data": []}' });
+    await fetchFromOpenRouter("/activity", "date=2026-05-01");
+
+    const calledUrl = mockFetch.mock.calls[0][0];
+    expect(calledUrl.pathname).toBe("/api/v1/activity");
+  });
 });
 
 // ── getBalance ───────────────────────────────────────────────────────────────
