@@ -58,15 +58,15 @@ async function fetchFromOpenRouter(path, queryString) {
     signal: AbortSignal.timeout(15000),
   });
 
+  const body = await res.text();
+
   if (!res.ok) {
-    const body = await res.text();
     throw new Error(`OpenRouter API returned ${res.status}: ${body.slice(0, 500)}`);
   }
 
   try {
-    return await res.json();
+    return JSON.parse(body);
   } catch {
-    const body = await res.text();
     throw new Error(`Failed to parse OpenRouter response: ${body.slice(0, 200)}`);
   }
 }
