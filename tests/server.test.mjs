@@ -330,6 +330,22 @@ describe("getUsage", () => {
     expect(result.errors[0].error).toContain("upstream error");
     expect(result.days).toEqual([]);
   });
+
+  it("does not request today's incomplete OpenRouter activity bucket", async () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const todayStr = now.toISOString().slice(0, 10);
+
+    setupFetchMock({ body: JSON.stringify({ data: [] }) });
+
+    await getUsage(year, month);
+
+    for (const call of mockFetch.mock.calls) {
+      const url = call[0];
+      expect(url.searchParams.get("date")).not.toBe(todayStr);
+    }
+  });
 });
 
 // ── HTTP routes (live server) ─────────────────────────────────────────────────

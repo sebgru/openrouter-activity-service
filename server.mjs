@@ -175,7 +175,7 @@ async function getUsage(year, month) {
 
   for (const dateStr of requestedDates) {
     const dt = new Date(dateStr + "T00:00:00Z");
-    if (dt < thirtyDaysAgo || dt > today) continue;
+    if (dt < thirtyDaysAgo || dt >= today) continue;
 
     try {
       const dayBucket = createUsageBucket();
