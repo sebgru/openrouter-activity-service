@@ -12,7 +12,7 @@ Sits behind Docker Compose so the OpenRouter Management API key stays inside the
 
 ### GET `/usage?year=2026&month=5`
 
-Returns per-model usage data for the requested month (aggregated from OpenRouter's daily activity API).
+Returns per-model usage data for the requested month (aggregated from OpenRouter's daily activity API), plus provider-backed daily buckets for the OpenRouter activity window.
 
 **Response:**
 
@@ -35,9 +35,67 @@ Returns per-model usage data for the requested month (aggregated from OpenRouter
         "OpenAI": { "requests": 500, "cost": 20.0 }
       }
     }
-  ]
+  ],
+  "days": [
+    {
+      "date": "2026-05-31",
+      "requests": 25,
+      "promptTokens": 10000,
+      "completionTokens": 2500,
+      "reasoningTokens": 0,
+      "cost": 1.25,
+      "models": [
+        {
+          "model": "openai/gpt-4.1",
+          "requests": 25,
+          "promptTokens": 10000,
+          "completionTokens": 2500,
+          "reasoningTokens": 0,
+          "cost": 1.25,
+          "providers": {
+            "OpenAI": {
+              "requests": 25,
+              "promptTokens": 10000,
+              "completionTokens": 2500,
+              "reasoningTokens": 0,
+              "cost": 1.25
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "yesterday": {
+    "date": "2026-05-31",
+    "requests": 25,
+    "promptTokens": 10000,
+    "completionTokens": 2500,
+    "reasoningTokens": 0,
+    "cost": 1.25,
+    "models": [
+      {
+        "model": "openai/gpt-4.1",
+        "requests": 25,
+        "promptTokens": 10000,
+        "completionTokens": 2500,
+        "reasoningTokens": 0,
+        "cost": 1.25,
+        "providers": {
+          "OpenAI": {
+            "requests": 25,
+            "promptTokens": 10000,
+            "completionTokens": 2500,
+            "reasoningTokens": 0,
+            "cost": 1.25
+          }
+        }
+      }
+    ]
+  }
 }
 ```
+
+`days` contains the requested month dates that are still available from OpenRouter's last-30-days activity window. `yesterday` is the matching daily bucket when yesterday falls in the requested month and activity window; otherwise it is `null`.
 
 ### GET `/balance`
 

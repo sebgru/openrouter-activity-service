@@ -258,32 +258,63 @@ describe("getUsage", () => {
     expect(result.totalRequests).toBe(0);
     expect(result.totalCost).toBe(0);
     expect(result.models).toHaveLength(0);
+    expect(result.days).toEqual([]);
+    expect(result.yesterday).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("aggregates activity data across days", async () => {
-    // Use the current month so some days fall within the 30-day window.
+  it("aggregates activity data across days and exposes yesterday", async () => {
+    // Query the month containing yesterday so the yesterday shortcut is always in range.
     const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth() + 1;
+    const yesterday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const year = yesterday.getUTCFullYear();
+    const month = yesterday.getUTCMonth() + 1;
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
-    const activityEntry = {
-      model: "openai/gpt-4.1",
-      requests: 10,
-      prompt_tokens: 1000,
-      completion_tokens: 500,
-      reasoning_tokens: 0,
-      usage: 1.5,
-      provider_name: "OpenAI",
-    };
+    const activityEntries = [
+      {
+        model: "openai/gpt-4.1",
+        requests: 10,
+        prompt_tokens: 1000,
+        completion_tokens: 500,
+        reasoning_tokens: 0,
+        usage: 1.5,
+        provider_name: "OpenAI",
+      },
+      {
+        model: "anthropic/claude-sonnet-4",
+        requests: 2,
+        prompt_tokens: 300,
+        completion_tokens: 150,
+        reasoning_tokens: 50,
+        usage: 0.75,
+        provider_name: "Anthropic",
+      },
+    ];
 
-    setupFetchMock({ body: JSON.stringify({ data: [activityEntry] }) });
+    setupFetchMock({ body: JSON.stringify({ data: activityEntries }) });
 
     const result = await getUsage(year, month);
     expect(result.totalRequests).toBeGreaterThan(0);
     expect(result.totalCost).toBeGreaterThan(0);
     expect(result.models[0].model).toBe("openai/gpt-4.1");
     expect(result.models[0].providers["OpenAI"]).toBeDefined();
+    expect(result.days.length).toBeGreaterThan(0);
+    expect(result.yesterday).toBeDefined();
+    expect(result.yesterday.date).toBe(yesterdayStr);
+    expect(result.yesterday.requests).toBe(12);
+    expect(result.yesterday.promptTokens).toBe(1300);
+    expect(result.yesterday.completionTokens).toBe(650);
+    expect(result.yesterday.reasoningTokens).toBe(50);
+    expect(result.yesterday.cost).toBe(2.25);
+    expect(result.yesterday.models[0].providers["OpenAI"]).toEqual({
+      requests: 10,
+      promptTokens: 1000,
+      completionTokens: 500,
+      reasoningTokens: 0,
+      cost: 1.5,
+    });
   });
 
   it("records errors for days that fail and still returns partial results", async () => {
@@ -297,6 +328,7 @@ describe("getUsage", () => {
     expect(result.errors).toBeDefined();
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0].error).toContain("upstream error");
+    expect(result.days).toEqual([]);
   });
 });
 
@@ -347,6 +379,8 @@ describe("HTTP routes", () => {
     expect(status).toBe(200);
     expect(body.totalRequests).toBe(0);
     expect(Array.isArray(body.models)).toBe(true);
+    expect(body.days).toEqual([]);
+    expect(body.yesterday).toBeNull();
   });
 
   it("GET /usage without year/month returns 400", async () => {

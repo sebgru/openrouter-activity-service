@@ -77,95 +77,162 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
+function formatDateUTC(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function createUsageBucket() {
+  return {
+    requests: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    reasoningTokens: 0,
+    cost: 0,
+    models: {},
+  };
+}
+
+function addUsageEntry(bucket, entry) {
+  const model = entry.model || "unknown";
+  const provider = entry.provider_name || "unknown";
+  const requests = entry.requests || 0;
+  const promptTokens = entry.prompt_tokens || 0;
+  const completionTokens = entry.completion_tokens || 0;
+  const reasoningTokens = entry.reasoning_tokens || 0;
+  const cost = entry.usage || 0;
+
+  bucket.requests += requests;
+  bucket.promptTokens += promptTokens;
+  bucket.completionTokens += completionTokens;
+  bucket.reasoningTokens += reasoningTokens;
+  bucket.cost += cost;
+
+  if (!bucket.models[model]) {
+    bucket.models[model] = {
+      requests: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      reasoningTokens: 0,
+      cost: 0,
+      providers: {},
+    };
+  }
+
+  const modelBucket = bucket.models[model];
+  modelBucket.requests += requests;
+  modelBucket.promptTokens += promptTokens;
+  modelBucket.completionTokens += completionTokens;
+  modelBucket.reasoningTokens += reasoningTokens;
+  modelBucket.cost += cost;
+
+  if (!modelBucket.providers[provider]) {
+    modelBucket.providers[provider] = {
+      requests: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      reasoningTokens: 0,
+      cost: 0,
+    };
+  }
+
+  const providerBucket = modelBucket.providers[provider];
+  providerBucket.requests += requests;
+  providerBucket.promptTokens += promptTokens;
+  providerBucket.completionTokens += completionTokens;
+  providerBucket.reasoningTokens += reasoningTokens;
+  providerBucket.cost += cost;
+}
+
+function finalizeModels(modelsByName) {
+  return Object.entries(modelsByName)
+    .map(([model, data]) => ({ model, ...data }))
+    .sort((a, b) => b.cost - a.cost);
+}
+
 async function getUsage(year, month) {
   const totalDays = daysInMonth(year, month);
-  const today = new Date();
-  const days = [];
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const yesterdayDate = new Date(today);
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+  const yesterdayStr = formatDateUTC(yesterdayDate);
+  const requestedDates = [];
 
   // Collect data for all days in the month (up to today, but OpenRouter only keeps 30 days)
   for (let d = 1; d <= totalDays; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    days.push(dateStr);
+    requestedDates.push(dateStr);
   }
 
   // Fetch activity for each day the OpenRouter API still has data for (last 30 UTC days)
   // We batch-fetch each day individually for clean per-day data
-  const allActivity = [];
   const errors = [];
+  const dayMap = {};
 
   // Fetch only the last 30 days (OpenRouter limit)
-  const thirtyDaysAgo = new Date();
+  const thirtyDaysAgo = new Date(today);
   thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
 
-  for (const dateStr of days) {
+  for (const dateStr of requestedDates) {
     const dt = new Date(dateStr + "T00:00:00Z");
     if (dt < thirtyDaysAgo || dt > today) continue;
 
     try {
+      const dayBucket = createUsageBucket();
       const result = await fetchFromOpenRouter(`/activity`, `date=${dateStr}`);
       if (result && Array.isArray(result.data)) {
-        allActivity.push(...result.data);
+        for (const entry of result.data) {
+          addUsageEntry(dayBucket, entry);
+        }
       }
+      dayMap[dateStr] = dayBucket;
     } catch (err) {
       errors.push({ date: dateStr, error: err.message });
     }
   }
 
-  // Aggregate: group by model, sum across days
-  const modelMap = {};
-  let totalRequests = 0;
-  let totalPromptTokens = 0;
-  let totalCompletionTokens = 0;
-  let totalReasoningTokens = 0;
-  let totalCost = 0;
+  const monthBucket = createUsageBucket();
 
-  for (const entry of allActivity) {
-    const model = entry.model || "unknown";
-    if (!modelMap[model]) {
-      modelMap[model] = {
-        requests: 0,
-        promptTokens: 0,
-        completionTokens: 0,
-        reasoningTokens: 0,
-        cost: 0,
-        providers: {},
-      };
+  for (const day of Object.values(dayMap)) {
+    for (const model of Object.entries(day.models)) {
+      const [modelName, modelData] = model;
+      for (const [providerName, providerData] of Object.entries(modelData.providers)) {
+        addUsageEntry(monthBucket, {
+          model: modelName,
+          provider_name: providerName,
+          requests: providerData.requests,
+          prompt_tokens: providerData.promptTokens,
+          completion_tokens: providerData.completionTokens,
+          reasoning_tokens: providerData.reasoningTokens,
+          usage: providerData.cost,
+        });
+      }
     }
-
-    const m = modelMap[model];
-    const reqs = entry.requests || 0;
-    const cost = entry.usage || 0;
-
-    m.requests += reqs;
-    m.promptTokens += entry.prompt_tokens || 0;
-    m.completionTokens += entry.completion_tokens || 0;
-    m.reasoningTokens += entry.reasoning_tokens || 0;
-    m.cost += cost;
-
-    const prov = entry.provider_name || "unknown";
-    if (!m.providers[prov]) m.providers[prov] = { requests: 0, cost: 0 };
-    m.providers[prov].requests += reqs;
-    m.providers[prov].cost += cost;
-
-    totalRequests += reqs;
-    totalPromptTokens += entry.prompt_tokens || 0;
-    totalCompletionTokens += entry.completion_tokens || 0;
-    totalReasoningTokens += entry.reasoning_tokens || 0;
-    totalCost += cost;
   }
 
-  // Build sorted models array
-  const models = Object.entries(modelMap)
-    .map(([model, data]) => ({ model, ...data }))
-    .sort((a, b) => b.cost - a.cost);
+  const days = Object.entries(dayMap)
+    .map(([date, data]) => ({
+      date,
+      requests: data.requests,
+      promptTokens: data.promptTokens,
+      completionTokens: data.completionTokens,
+      reasoningTokens: data.reasoningTokens,
+      cost: data.cost,
+      models: finalizeModels(data.models),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const yesterday = days.find((day) => day.date === yesterdayStr) || null;
 
   return {
-    totalRequests,
-    totalPromptTokens,
-    totalCompletionTokens,
-    totalReasoningTokens,
-    totalCost,
-    models,
+    totalRequests: monthBucket.requests,
+    totalPromptTokens: monthBucket.promptTokens,
+    totalCompletionTokens: monthBucket.completionTokens,
+    totalReasoningTokens: monthBucket.reasoningTokens,
+    totalCost: monthBucket.cost,
+    models: finalizeModels(monthBucket.models),
+    days,
+    yesterday,
     errors: errors.length > 0 ? errors : undefined,
   };
 }
