@@ -1,6 +1,6 @@
 {
   "name": "openrouter-activity-service",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lightweight internal microservice exposing OpenRouter usage/activity and credit data via JSON API.",
   "type": "module",
   "scripts": {
