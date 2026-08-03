@@ -53,7 +53,5 @@
     }
   },
   // Forward the service port for running the server inside the container.
-  "forwardPorts": [
-    8767
-  ]
+  "forwardPorts": [8767]
 }
