@@ -16,7 +16,7 @@
   // .ssh is staged at /tmp/host-ssh; setup.sh copies it with the required
   // 700/600 permissions (bind mounts can't change permissions).
   "mounts": [
-    "source=${localEnv:HOME}/.gitconfig,target=/home/node/.gitconfig,type=bind",
+    "source=${localEnv:HOME}/.gitconfig,target=/tmp/host-gitconfig,type=bind,readonly=true",
     "source=${localEnv:HOME}/.vimrc,target=/home/node/.vimrc,type=bind",
     "source=${localEnv:HOME}/.profile,target=/home/node/.profile-host,type=bind,readonly=true",
     "source=${localEnv:HOME}/.ssh,target=/tmp/host-ssh,type=bind,readonly=true"
@@ -53,5 +53,7 @@
     }
   },
   // Forward the service port for running the server inside the container.
-  "forwardPorts": [8767]
+  "forwardPorts": [
+    8767
+  ]
 }

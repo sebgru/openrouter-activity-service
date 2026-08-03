@@ -15,6 +15,18 @@ echo "→ Installing dev tools (npm install)…"
 sudo chown -R node:node /workspace/node_modules /workspace/package-lock.json /workspace/coverage 2>/dev/null || true
 cd /workspace && npm install
 
+# ── Git config ───────────────────────────────────────────────────────────────
+# .gitconfig is staged at /tmp/host-gitconfig (bind-mounted read-only).
+# Copy it so git can write to ~/.gitconfig freely (bind-mounted files can't
+# be atomically replaced, which causes "Device or resource busy" errors).
+echo "→ Configuring git…"
+if [ -s /tmp/host-gitconfig ]; then
+    cp /tmp/host-gitconfig ~/.gitconfig
+    echo "  ~/.gitconfig installed."
+else
+    echo "  No host .gitconfig found — skipping."
+fi
+
 # ── SSH keys ──────────────────────────────────────────────────────────────────
 # .ssh is staged at /tmp/host-ssh (bind-mounted read-only from the host).
 # We copy it to ~/.ssh with the permissions SSH requires (700/600).
