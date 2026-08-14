@@ -5,7 +5,7 @@
  * without making real network calls.
  */
 
-import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
 
 // ── Keep real fetch before any mocks overwrite it ───────────────────────────
 const originalFetch = global.fetch;
@@ -33,6 +33,7 @@ import {
   createServer,
   PORT,
   TOKEN_FILE,
+  getTokenAccounts,
 } from "../server.mjs";
 
 // ── HTTPS mock helper ────────────────────────────────────────────────────────
@@ -62,6 +63,10 @@ function setupFetchMock({
     });
   }
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 // ── Helper: fire an HTTP request against the live test server ────────────────
 
@@ -241,6 +246,103 @@ describe("getBalance", () => {
   it("throws when the API response has unexpected shape", async () => {
     setupFetchMock({ body: JSON.stringify({ unexpected: true }) });
     await expect(getBalance()).rejects.toThrow("Unexpected response from /credits endpoint");
+  });
+});
+
+// ── Multi-account configuration and aggregation ────────────────────────────
+
+describe("multi-account support", () => {
+  const accounts = {
+    personal: "/run/secrets/openrouter-personal",
+    work: "/run/secrets/openrouter-work",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("OPENROUTER_MGMT_TOKEN_FILES", JSON.stringify(accounts));
+    readFileSync.mockImplementation((file) => {
+      if (file === accounts.personal) return "personal-token";
+      if (file === accounts.work) return "work-token";
+      throw new Error("ENOENT");
+    });
+  });
+
+  it("loads labelled token files from the JSON mapping", () => {
+    expect(getTokenAccounts()).toEqual([
+      { label: "personal", file: accounts.personal },
+      { label: "work", file: accounts.work },
+    ]);
+  });
+
+  it("aggregates usage while retaining per-account results", async () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    mockFetch.mockImplementation(async (_url, options) => {
+      const isPersonal = options.headers.Authorization === "Bearer personal-token";
+      const value = isPersonal ? 1 : 2;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: [
+              {
+                model: isPersonal ? "openai/gpt-4.1" : "anthropic/claude-sonnet-4",
+                requests: value,
+                prompt_tokens: value * 10,
+                completion_tokens: value * 5,
+                reasoning_tokens: 0,
+                usage: value / 10,
+                provider_name: isPersonal ? "OpenAI" : "Anthropic",
+              },
+            ],
+          }),
+      };
+    });
+
+    const result = await getUsage(year, month);
+
+    expect(result.accounts).toHaveLength(2);
+    expect(result.accounts.map((account) => account.account)).toEqual(["personal", "work"]);
+    expect(result.accounts[0].totalRequests).toBeGreaterThan(0);
+    expect(result.accounts[1].totalRequests).toBe(result.accounts[0].totalRequests * 2);
+    expect(result.totalRequests).toBe(
+      result.accounts[0].totalRequests + result.accounts[1].totalRequests
+    );
+    expect(result.totalCost).toBeCloseTo(
+      result.accounts[0].totalCost + result.accounts[1].totalCost
+    );
+    expect(result.models.map((model) => model.model)).toEqual([
+      "anthropic/claude-sonnet-4",
+      "openai/gpt-4.1",
+    ]);
+  });
+
+  it("aggregates balances and retains account-level balances", async () => {
+    mockFetch.mockImplementation(async (_url, options) => {
+      const isPersonal = options.headers.Authorization === "Bearer personal-token";
+      const totalCredits = isPersonal ? 100 : 250;
+      const totalUsage = isPersonal ? 25 : 50;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ data: { total_credits: totalCredits, total_usage: totalUsage } }),
+      };
+    });
+
+    const result = await getBalance();
+
+    expect(result).toMatchObject({
+      totalCredits: 350,
+      totalUsage: 75,
+      remainingCredits: 275,
+    });
+    expect(result.accounts).toEqual([
+      { account: "personal", totalCredits: 100, totalUsage: 25, remainingCredits: 75 },
+      { account: "work", totalCredits: 250, totalUsage: 50, remainingCredits: 200 },
+    ]);
   });
 });
 

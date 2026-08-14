@@ -8,6 +8,21 @@ Lightweight internal microservice that exposes OpenRouter usage/activity and cre
 
 Sits behind Docker Compose so the OpenRouter Management API key stays inside the container — never exposed to the OpenClaw container.
 
+For multiple OpenRouter accounts, set `OPENROUTER_MGMT_TOKEN_FILES` to a JSON
+object mapping a report label to a mounted management-token file. The service
+returns an `accounts` array under `/usage` and `/balance`, while retaining the
+existing aggregate fields for compatibility:
+
+```yaml
+environment:
+  OPENROUTER_MGMT_TOKEN_FILES: >-
+    {"sebastian":"/run/secrets/openrouter-sebastian",
+     "katja":"/run/secrets/openrouter-katja"}
+```
+
+Each account requires its own OpenRouter Management API key with `/credits`
+and `/activity` read scopes. Ordinary inference API keys are not sufficient.
+
 ## Endpoints
 
 ### GET `/usage?year=2026&month=5`
@@ -175,10 +190,11 @@ curl http://localhost:8767/balance
 
 ## Environment Variables
 
-| Variable                     | Default                                    | Description               |
-| ---------------------------- | ------------------------------------------ | ------------------------- |
-| `OPENROUTER_ACTIVITY_PORT`   | `8767`                                     | HTTP listen port          |
-| `OPENROUTER_MGMT_TOKEN_FILE` | `/run/secrets/openrouter-management-token` | Path to Bearer token file |
+| Variable                      | Default                                    | Description                                                                                      |
+| ----------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `OPENROUTER_ACTIVITY_PORT`    | `8767`                                     | HTTP listen port                                                                                 |
+| `OPENROUTER_MGMT_TOKEN_FILE`  | `/run/secrets/openrouter-management-token` | Path to Bearer token file                                                                        |
+| `OPENROUTER_MGMT_TOKEN_FILES` | unset                                      | JSON object mapping account labels to management-token files; overrides the single-token setting |
 
 ## CI/CD
 

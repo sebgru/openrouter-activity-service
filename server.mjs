@@ -24,27 +24,75 @@ import { readFileSync } from "node:fs";
 import { URL, fileURLToPath } from "node:url";
 
 const PORT = parseInt(process.env.OPENROUTER_ACTIVITY_PORT || "8767", 10);
-const TOKEN_FILE =
-  process.env.OPENROUTER_MGMT_TOKEN_FILE || "/run/secrets/openrouter-management-token";
+const DEFAULT_TOKEN_FILE = "/run/secrets/openrouter-management-token";
+const TOKEN_FILE = process.env.OPENROUTER_MGMT_TOKEN_FILE || DEFAULT_TOKEN_FILE;
 const API_HOST = "openrouter.ai";
 const KNOWN_PATHS = ["/health", "/usage?year=...&month=...", "/balance"];
 
 // ---------- Token ----------
 
-function readToken() {
+function readToken(tokenFile = getLegacyTokenFile()) {
   try {
-    return readFileSync(TOKEN_FILE, "utf8").trim();
+    const token = readFileSync(tokenFile, "utf8").trim();
+    return token || null;
   } catch {
     return null;
   }
 }
 
+function getLegacyTokenFile() {
+  return process.env.OPENROUTER_MGMT_TOKEN_FILE || DEFAULT_TOKEN_FILE;
+}
+
+function getTokenAccounts() {
+  const mapping = process.env.OPENROUTER_MGMT_TOKEN_FILES?.trim();
+
+  if (!mapping) {
+    return [{ label: "default", file: getLegacyTokenFile() }];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(mapping);
+  } catch {
+    throw new Error("OPENROUTER_MGMT_TOKEN_FILES must be valid JSON");
+  }
+
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("OPENROUTER_MGMT_TOKEN_FILES must be a JSON object mapping labels to files");
+  }
+
+  const accounts = Object.entries(parsed).map(([label, file]) => {
+    if (!label.trim() || typeof file !== "string" || !file.trim()) {
+      throw new Error(
+        "OPENROUTER_MGMT_TOKEN_FILES must map non-empty labels to non-empty file paths"
+      );
+    }
+    return { label, file: file.trim() };
+  });
+
+  if (accounts.length === 0) {
+    throw new Error("OPENROUTER_MGMT_TOKEN_FILES must contain at least one account");
+  }
+
+  return accounts;
+}
+
 // ---------- HTTPS helpers ----------
 
-async function fetchFromOpenRouter(path, queryString) {
-  const token = readToken();
+async function fetchFromOpenRouter(
+  path,
+  queryString,
+  tokenFile = getLegacyTokenFile(),
+  accountLabel
+) {
+  const token = readToken(tokenFile);
   if (!token) {
-    throw new Error("OPENROUTER_MGMT_TOKEN_FILE not found or empty");
+    throw new Error(
+      accountLabel
+        ? `Token file for account "${accountLabel}" not found or empty`
+        : "OPENROUTER_MGMT_TOKEN_FILE not found or empty"
+    );
   }
 
   const url = new URL(path.replace(/^\//, ""), `https://${API_HOST}/api/v1/`);
@@ -149,7 +197,7 @@ function finalizeModels(modelsByName) {
     .sort((a, b) => b.cost - a.cost);
 }
 
-async function getUsage(year, month) {
+async function getUsageForAccount(year, month, account) {
   const totalDays = daysInMonth(year, month);
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -179,7 +227,12 @@ async function getUsage(year, month) {
 
     try {
       const dayBucket = createUsageBucket();
-      const result = await fetchFromOpenRouter(`/activity`, `date=${dateStr}`);
+      const result = await fetchFromOpenRouter(
+        `/activity`,
+        `date=${dateStr}`,
+        account.file,
+        account.label
+      );
       if (result && Array.isArray(result.data)) {
         for (const entry of result.data) {
           addUsageEntry(dayBucket, entry);
@@ -237,16 +290,139 @@ async function getUsage(year, month) {
   };
 }
 
-async function getBalance() {
-  const result = await fetchFromOpenRouter(`/credits`);
+function addUsageBucket(target, source) {
+  const modelEntries = Array.isArray(source.models)
+    ? source.models.map((modelData) => [modelData.model, modelData])
+    : Object.entries(source.models);
+
+  for (const [modelName, modelData] of modelEntries) {
+    for (const [providerName, providerData] of Object.entries(modelData.providers)) {
+      addUsageEntry(target, {
+        model: modelName,
+        provider_name: providerName,
+        requests: providerData.requests,
+        prompt_tokens: providerData.promptTokens,
+        completion_tokens: providerData.completionTokens,
+        reasoning_tokens: providerData.reasoningTokens,
+        usage: providerData.cost,
+      });
+    }
+  }
+}
+
+function aggregateUsageResults(accountResults) {
+  const monthBucket = createUsageBucket();
+  const dayMap = {};
+
+  for (const result of accountResults) {
+    addUsageBucket(monthBucket, result);
+    for (const day of result.days) {
+      if (!dayMap[day.date]) dayMap[day.date] = createUsageBucket();
+      addUsageBucket(dayMap[day.date], day);
+    }
+  }
+
+  const now = new Date();
+  const yesterdayDate = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+  const yesterdayStr = formatDateUTC(yesterdayDate);
+  const days = Object.entries(dayMap)
+    .map(([date, data]) => ({
+      date,
+      requests: data.requests,
+      promptTokens: data.promptTokens,
+      completionTokens: data.completionTokens,
+      reasoningTokens: data.reasoningTokens,
+      cost: data.cost,
+      models: finalizeModels(data.models),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const errors = accountResults.flatMap((result) =>
+    (result.errors || []).map((error) => ({
+      ...error,
+      account: result.account,
+    }))
+  );
+
+  return {
+    totalRequests: monthBucket.requests,
+    totalPromptTokens: monthBucket.promptTokens,
+    totalCompletionTokens: monthBucket.completionTokens,
+    totalReasoningTokens: monthBucket.reasoningTokens,
+    totalCost: monthBucket.cost,
+    models: finalizeModels(monthBucket.models),
+    days,
+    yesterday: days.find((day) => day.date === yesterdayStr) || null,
+    errors: errors.length > 0 ? errors : undefined,
+  };
+}
+
+async function getUsage(year, month) {
+  const accounts = getTokenAccounts();
+  const accountResults = [];
+
+  for (const account of accounts) {
+    const result = await getUsageForAccount(year, month, account);
+    accountResults.push({ ...result, account: account.label });
+  }
+
+  if (accounts.length === 1) {
+    const legacyResult = { ...accountResults[0] };
+    delete legacyResult.account;
+    return legacyResult;
+  }
+
+  return {
+    ...aggregateUsageResults(accountResults),
+    accounts: accountResults,
+  };
+}
+
+async function getBalanceForAccount(account) {
+  const result = await fetchFromOpenRouter(`/credits`, undefined, account.file, account.label);
   if (result && result.data) {
     return {
+      account: account.label,
       totalCredits: result.data.total_credits,
       totalUsage: result.data.total_usage,
       remainingCredits: result.data.total_credits - result.data.total_usage,
     };
   }
   throw new Error("Unexpected response from /credits endpoint");
+}
+
+async function getBalance() {
+  const accounts = getTokenAccounts();
+  const accountResults = [];
+
+  for (const account of accounts) {
+    try {
+      accountResults.push(await getBalanceForAccount(account));
+    } catch (err) {
+      if (accounts.length === 1) throw err;
+      accountResults.push({ account: account.label, error: err.message });
+    }
+  }
+
+  if (accounts.length === 1) {
+    const legacyResult = { ...accountResults[0] };
+    delete legacyResult.account;
+    return legacyResult;
+  }
+
+  const successful = accountResults.filter((account) => !account.error);
+  const result = {
+    totalCredits: successful.reduce((sum, account) => sum + account.totalCredits, 0),
+    totalUsage: successful.reduce((sum, account) => sum + account.totalUsage, 0),
+    remainingCredits: successful.reduce((sum, account) => sum + account.remainingCredits, 0),
+    accounts: accountResults,
+  };
+  const errors = accountResults.filter((account) => account.error);
+  if (errors.length > 0) result.errors = errors.map(({ account, error }) => ({ account, error }));
+  return result;
 }
 
 // ---------- HTTP Server ----------
@@ -286,12 +462,28 @@ async function handleRequest(req, res) {
   try {
     if (pathname === "/health") {
       // Check token availability
-      const token = readToken();
-      sendJSON(res, 200, {
-        ok: true,
-        service: "openrouter-activity-service",
-        token_loaded: token !== null,
-      });
+      try {
+        const accounts = getTokenAccounts().map(({ label, file }) => ({
+          label,
+          token_loaded: readToken(file) !== null,
+        }));
+        sendJSON(res, 200, {
+          ok: true,
+          service: "openrouter-activity-service",
+          token_loaded: accounts.every((account) => account.token_loaded),
+          accounts,
+          accounts_loaded: accounts.filter((account) => account.token_loaded).length,
+        });
+      } catch (err) {
+        sendJSON(res, 200, {
+          ok: true,
+          service: "openrouter-activity-service",
+          token_loaded: false,
+          accounts: [],
+          accounts_loaded: 0,
+          token_config_error: err.message,
+        });
+      }
     } else if (pathname === "/usage") {
       const year = parseInt(url.searchParams.get("year"), 10);
       const month = parseInt(url.searchParams.get("month"), 10);
@@ -323,6 +515,7 @@ export function createServer() {
 
 export {
   readToken,
+  getTokenAccounts,
   fetchFromOpenRouter,
   daysInMonth,
   getUsage,
