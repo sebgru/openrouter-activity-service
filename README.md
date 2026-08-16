@@ -37,7 +37,8 @@ secret. Per-key activity is limited to OpenRouter's last-30-days window.
       "totalCost": 25.0,
       "models": [],
       "days": [],
-      "yesterday": null
+      "yesterday": null,
+      "currentDay": null
     }
   ],
   "models": [
@@ -112,7 +113,7 @@ secret. Per-key activity is limited to OpenRouter's last-30-days window.
 }
 ```
 
-`days` contains the requested month dates that are still available from OpenRouter's last-30-days activity window. `yesterday` is the matching daily bucket when yesterday falls in the requested month and activity window; otherwise it is `null`.
+`days` contains the requested month dates that are still available from OpenRouter's last-30-days activity window. Today's UTC bucket is included and has `"partial": true`, because its activity is still accumulating; therefore the current month's totals (including each `apiKeys` entry) also include partial current-day data. `currentDay` is that bucket, or `null` when the requested month is not the current UTC month. `yesterday` is the matching completed daily bucket when yesterday falls in the requested month and activity window; otherwise it is `null`.
 
 ### GET `/balance`
 
