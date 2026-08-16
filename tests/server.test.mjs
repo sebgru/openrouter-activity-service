@@ -262,6 +262,7 @@ describe("getUsage", () => {
     expect(result.models).toHaveLength(0);
     expect(result.days).toEqual([]);
     expect(result.yesterday).toBeNull();
+    expect(result.currentDay).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -343,7 +344,7 @@ describe("getUsage", () => {
     expect(result.days).toEqual([]);
   });
 
-  it("does not request today's incomplete OpenRouter activity bucket", async () => {
+  it("includes and marks today's incomplete OpenRouter activity bucket", async () => {
     const now = new Date();
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth() + 1;
@@ -351,12 +352,66 @@ describe("getUsage", () => {
 
     setupFetchMock({ body: JSON.stringify({ data: [] }) });
 
-    await getUsage(year, month);
+    const result = await getUsage(year, month);
 
-    for (const call of mockFetch.mock.calls) {
-      const url = call[0];
-      expect(url.searchParams.get("date")).not.toBe(todayStr);
-    }
+    expect(
+      mockFetch.mock.calls.some(
+        ([url]) => url.pathname === "/api/v1/activity" && url.searchParams.get("date") === todayStr
+      )
+    ).toBe(true);
+    expect(result.currentDay).toEqual(expect.objectContaining({ date: todayStr, partial: true }));
+    expect(result.days.find((day) => day.date === todayStr)).toEqual(
+      expect.objectContaining({ partial: true })
+    );
+  });
+
+  it("includes today's partial usage in the per-key breakdown", async () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const todayStr = now.toISOString().slice(0, 10);
+
+    mockFetch.mockImplementation(async (url) => {
+      if (url.pathname === "/api/v1/keys") {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ data: [{ label: "Today only", hash: "today-key" }] }),
+        };
+      }
+      const isToday = url.searchParams.get("date") === todayStr;
+      const isKey = url.searchParams.get("api_key_hash") === "today-key";
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data:
+              isToday && isKey
+                ? [
+                    {
+                      model: "openai/gpt-4.1",
+                      requests: 1,
+                      prompt_tokens: 10,
+                      completion_tokens: 5,
+                      usage: 0.01,
+                      provider_name: "OpenAI",
+                    },
+                  ]
+                : [],
+          }),
+      };
+    });
+
+    const result = await getUsage(year, month);
+    expect(result.apiKeys).toEqual([
+      expect.objectContaining({
+        label: "Today only",
+        totalRequests: 1,
+        totalCost: 0.01,
+        currentDay: expect.objectContaining({ date: todayStr, partial: true, cost: 0.01 }),
+      }),
+    ]);
   });
 
   it("adds a safe per-ordinary-API-key breakdown without changing aggregate totals", async () => {

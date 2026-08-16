@@ -176,7 +176,8 @@ async function getUsageForActivity(year, month, apiKeyHash) {
   const yesterdayStr = formatDateUTC(yesterdayDate);
   const requestedDates = [];
 
-  // Collect data for all days in the month (up to today, but OpenRouter only keeps 30 days)
+  // Collect data for all days in the month up to and including today. OpenRouter
+  // only keeps 30 days and today's bucket is still accumulating.
   for (let d = 1; d <= totalDays; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     requestedDates.push(dateStr);
@@ -189,11 +190,11 @@ async function getUsageForActivity(year, month, apiKeyHash) {
 
   // Fetch only the last 30 days (OpenRouter limit)
   const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
+  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 29);
 
   for (const dateStr of requestedDates) {
     const dt = new Date(dateStr + "T00:00:00Z");
-    if (dt < thirtyDaysAgo || dt >= today) continue;
+    if (dt < thirtyDaysAgo || dt > today) continue;
 
     try {
       const dayBucket = createUsageBucket();
@@ -231,6 +232,7 @@ async function getUsageForActivity(year, month, apiKeyHash) {
   const days = Object.entries(dayMap)
     .map(([date, data]) => ({
       date,
+      ...(date === formatDateUTC(today) ? { partial: true } : {}),
       requests: data.requests,
       promptTokens: data.promptTokens,
       completionTokens: data.completionTokens,
@@ -241,6 +243,7 @@ async function getUsageForActivity(year, month, apiKeyHash) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const yesterday = days.find((day) => day.date === yesterdayStr) || null;
+  const currentDay = days.find((day) => day.date === formatDateUTC(today)) || null;
 
   return {
     totalRequests: monthBucket.requests,
@@ -251,6 +254,9 @@ async function getUsageForActivity(year, month, apiKeyHash) {
     models: finalizeModels(monthBucket.models),
     days,
     yesterday,
+    // Today's OpenRouter activity bucket is included when requested, but it is
+    // incomplete until the UTC day ends.
+    currentDay,
     errors: errors.length > 0 ? errors : undefined,
   };
 }
