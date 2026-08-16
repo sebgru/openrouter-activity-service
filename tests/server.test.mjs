@@ -391,15 +391,15 @@ describe("getUsage", () => {
             data:
               isToday && isKey
                 ? [
-                  {
-                    model: "openai/gpt-4.1",
-                    requests: 1,
-                    prompt_tokens: 10,
-                    completion_tokens: 5,
-                    usage: 0.01,
-                    provider_name: "OpenAI",
-                  },
-                ]
+                    {
+                      model: "openai/gpt-4.1",
+                      requests: 1,
+                      prompt_tokens: 10,
+                      completion_tokens: 5,
+                      usage: 0.01,
+                      provider_name: "OpenAI",
+                    },
+                  ]
                 : [],
           }),
       };
