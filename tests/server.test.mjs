@@ -30,6 +30,8 @@ import {
   fetchFromOpenRouter,
   getBalance,
   getUsage,
+  getApiKeys,
+  activityQuery,
   createServer,
   PORT,
   TOKEN_FILE,
@@ -293,7 +295,12 @@ describe("getUsage", () => {
       },
     ];
 
-    setupFetchMock({ body: JSON.stringify({ data: activityEntries }) });
+    mockFetch.mockImplementation(async (url) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({ data: url.pathname === "/api/v1/keys" ? [] : activityEntries }),
+    }));
 
     const result = await getUsage(year, month);
     expect(result.totalRequests).toBeGreaterThan(0);
@@ -322,7 +329,12 @@ describe("getUsage", () => {
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth() + 1;
 
-    setupFetchMock({ networkError: true, errorMessage: "upstream error" });
+    mockFetch.mockImplementation(async (url) => {
+      if (url.pathname === "/api/v1/keys") {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ data: [] }) };
+      }
+      throw new Error("upstream error");
+    });
 
     const result = await getUsage(year, month);
     expect(result.errors).toBeDefined();
@@ -345,6 +357,95 @@ describe("getUsage", () => {
       const url = call[0];
       expect(url.searchParams.get("date")).not.toBe(todayStr);
     }
+  });
+
+  it("adds a safe per-ordinary-API-key breakdown without changing aggregate totals", async () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const entry = {
+      model: "openai/gpt-4.1",
+      requests: 3,
+      prompt_tokens: 30,
+      completion_tokens: 15,
+      reasoning_tokens: 0,
+      usage: 0.3,
+      provider_name: "OpenAI",
+    };
+    mockFetch.mockImplementation(async (url) => {
+      if (url.pathname === "/api/v1/keys") {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              data: [
+                { label: "OpenClaw", hash: "key-hash-openclaw", key: "must-not-leak" },
+                { name: "Other", hash: "key-hash-other" },
+              ],
+            }),
+        };
+      }
+      const hash = url.searchParams.get("api_key_hash");
+      const multiplier = hash === "key-hash-other" ? 2 : 1;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: hash ? [{ ...entry, requests: entry.requests * multiplier }] : [entry],
+          }),
+      };
+    });
+
+    const result = await getUsage(year, month);
+    expect(result.totalRequests).toBeGreaterThan(0);
+    expect(result.apiKeys).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "OpenClaw", hash: "key-hash-openclaw" }),
+        expect.objectContaining({ label: "Other", hash: "key-hash-other" }),
+      ])
+    );
+    expect(result.apiKeys[0]).not.toHaveProperty("key");
+    expect(result.apiKeys[1].totalRequests).toBe(result.apiKeys[0].totalRequests * 2);
+    expect(
+      mockFetch.mock.calls.some(
+        ([url]) =>
+          url.pathname === "/api/v1/activity" &&
+          url.searchParams.get("api_key_hash") === "key-hash-openclaw"
+      )
+    ).toBe(true);
+  });
+
+  it("reports a missing /keys management scope clearly", async () => {
+    const now = new Date();
+    mockFetch.mockImplementation(async (url) => {
+      if (url.pathname === "/api/v1/keys") {
+        return { ok: false, status: 403, text: async () => '{"error":"forbidden"}' };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: [] }) };
+    });
+    await expect(getUsage(now.getUTCFullYear(), now.getUTCMonth() + 1)).rejects.toThrow(
+      "/keys read scope"
+    );
+  });
+});
+
+describe("API key helpers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    readFileSync.mockReturnValue("test-token");
+  });
+
+  it("encodes key hashes safely in activity queries", () => {
+    expect(activityQuery("2026-08-15", "hash+/=?")).toBe(
+      "date=2026-08-15&api_key_hash=hash%2B%2F%3D%3F"
+    );
+  });
+
+  it("rejects malformed /keys entries", async () => {
+    setupFetchMock({ body: JSON.stringify({ data: [{ label: "No hash" }] }) });
+    await expect(getApiKeys()).rejects.toThrow("missing hash");
   });
 });
 

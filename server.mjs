@@ -13,11 +13,12 @@
 //   the new token automatically, no container restart required.
 //
 //   Create a management key: https://openrouter.ai/settings/keys → "Create Management Key"
-//   (Needs: /credits read + /activity read scopes)
+//   (Needs: /credits read + /activity read + /keys read scopes)
 //
 //   Scopes (from OpenRouter docs):
 //     - /credits read — total credits purchased and used
 //     - /activity read — per-model, per-day usage for last 30 days
+//     - /keys read — list ordinary API keys for the per-key usage breakdown
 
 import http from "node:http";
 import { readFileSync } from "node:fs";
@@ -149,7 +150,24 @@ function finalizeModels(modelsByName) {
     .sort((a, b) => b.cost - a.cost);
 }
 
-async function getUsage(year, month) {
+function activityQuery(date, apiKeyHash) {
+  const query = new URLSearchParams({ date });
+  if (apiKeyHash) query.set("api_key_hash", apiKeyHash);
+  return query.toString();
+}
+
+function monthIntersectsActivityWindow(year, month) {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
+  return (
+    new Date(Date.UTC(year, month - 1, 1)) <= today &&
+    new Date(Date.UTC(year, month, 0)) >= thirtyDaysAgo
+  );
+}
+
+async function getUsageForActivity(year, month, apiKeyHash) {
   const totalDays = daysInMonth(year, month);
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -179,7 +197,7 @@ async function getUsage(year, month) {
 
     try {
       const dayBucket = createUsageBucket();
-      const result = await fetchFromOpenRouter(`/activity`, `date=${dateStr}`);
+      const result = await fetchFromOpenRouter(`/activity`, activityQuery(dateStr, apiKeyHash));
       if (result && Array.isArray(result.data)) {
         for (const entry of result.data) {
           addUsageEntry(dayBucket, entry);
@@ -235,6 +253,48 @@ async function getUsage(year, month) {
     yesterday,
     errors: errors.length > 0 ? errors : undefined,
   };
+}
+
+async function getApiKeys() {
+  let result;
+  try {
+    result = await fetchFromOpenRouter(`/keys`);
+  } catch (err) {
+    throw new Error(
+      `Unable to list API keys. The management key needs /keys read scope: ${err.message}`
+    );
+  }
+
+  if (!result || !Array.isArray(result.data)) {
+    throw new Error("Unexpected response from /keys endpoint");
+  }
+
+  return result.data.map((key, index) => {
+    if (!key || typeof key.hash !== "string" || !key.hash.trim()) {
+      throw new Error(`Unexpected /keys entry ${index + 1}: missing hash`);
+    }
+    const label =
+      typeof key.label === "string" && key.label.trim()
+        ? key.label
+        : typeof key.name === "string" && key.name.trim()
+          ? key.name
+          : "Unnamed key";
+    return { label, hash: key.hash };
+  });
+}
+
+async function getUsage(year, month) {
+  // The unfiltered query remains the canonical source of legacy totals.
+  const usage = await getUsageForActivity(year, month);
+  if (!monthIntersectsActivityWindow(year, month)) {
+    return { ...usage, apiKeys: [] };
+  }
+
+  const apiKeys = [];
+  for (const apiKey of await getApiKeys()) {
+    apiKeys.push({ ...apiKey, ...(await getUsageForActivity(year, month, apiKey.hash)) });
+  }
+  return { ...usage, apiKeys };
 }
 
 async function getBalance() {
@@ -326,6 +386,8 @@ export {
   fetchFromOpenRouter,
   daysInMonth,
   getUsage,
+  getApiKeys,
+  activityQuery,
   getBalance,
   sendJSON,
   sendError,

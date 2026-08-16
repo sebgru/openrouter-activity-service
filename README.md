@@ -14,6 +14,12 @@ Sits behind Docker Compose so the OpenRouter Management API key stays inside the
 
 Returns per-model usage data for the requested month (aggregated from OpenRouter's daily activity API), plus provider-backed daily buckets for the OpenRouter activity window.
 
+Existing aggregate fields continue to come from the unfiltered account activity
+query. `apiKeys` adds the same usage shape for each ordinary API key, obtained
+by listing the account keys and querying activity using the OpenRouter key hash.
+It contains only the label and hash returned by OpenRouter, never an API-key
+secret. Per-key activity is limited to OpenRouter's last-30-days window.
+
 **Response:**
 
 ```json
@@ -23,6 +29,17 @@ Returns per-model usage data for the requested month (aggregated from OpenRouter
   "totalCompletionTokens": 150000,
   "totalReasoningTokens": 5000,
   "totalCost": 42.5,
+  "apiKeys": [
+    {
+      "label": "OpenClaw",
+      "hash": "<OpenRouter key hash>",
+      "totalRequests": 700,
+      "totalCost": 25.0,
+      "models": [],
+      "days": [],
+      "yesterday": null
+    }
+  ],
   "models": [
     {
       "model": "openai/gpt-4.1",
@@ -133,6 +150,7 @@ Required scopes:
 
 - `/credits` read — total credits purchased and used
 - `/activity` read — per-model, per-day usage data
+- `/keys` read — list ordinary API keys for the per-key usage breakdown
 
 ### 2. Store the key file
 
