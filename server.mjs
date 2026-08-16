@@ -176,8 +176,9 @@ async function getUsageForActivity(year, month, apiKeyHash) {
   const yesterdayStr = formatDateUTC(yesterdayDate);
   const requestedDates = [];
 
-  // Collect data for all days in the month up to and including today. OpenRouter
-  // only keeps 30 days and today's bucket is still accumulating.
+  // Collect data for all days in the month.  OpenRouter only retains 30 days.
+  // Its /activity endpoint does not accept the current UTC day, so activity
+  // data always ends at yesterday.
   for (let d = 1; d <= totalDays; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     requestedDates.push(dateStr);
@@ -194,7 +195,7 @@ async function getUsageForActivity(year, month, apiKeyHash) {
 
   for (const dateStr of requestedDates) {
     const dt = new Date(dateStr + "T00:00:00Z");
-    if (dt < thirtyDaysAgo || dt > today) continue;
+    if (dt < thirtyDaysAgo || dt > yesterdayDate) continue;
 
     try {
       const dayBucket = createUsageBucket();
@@ -232,7 +233,6 @@ async function getUsageForActivity(year, month, apiKeyHash) {
   const days = Object.entries(dayMap)
     .map(([date, data]) => ({
       date,
-      ...(date === formatDateUTC(today) ? { partial: true } : {}),
       requests: data.requests,
       promptTokens: data.promptTokens,
       completionTokens: data.completionTokens,
@@ -243,8 +243,6 @@ async function getUsageForActivity(year, month, apiKeyHash) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const yesterday = days.find((day) => day.date === yesterdayStr) || null;
-  const currentDay = days.find((day) => day.date === formatDateUTC(today)) || null;
-
   return {
     totalRequests: monthBucket.requests,
     totalPromptTokens: monthBucket.promptTokens,
@@ -254,9 +252,9 @@ async function getUsageForActivity(year, month, apiKeyHash) {
     models: finalizeModels(monthBucket.models),
     days,
     yesterday,
-    // Today's OpenRouter activity bucket is included when requested, but it is
-    // incomplete until the UTC day ends.
-    currentDay,
+    // /activity only provides completed UTC days. Per-key current-day cost is
+    // added separately from /keys usage_daily below.
+    currentDay: null,
     errors: errors.length > 0 ? errors : undefined,
   };
 }
@@ -264,7 +262,10 @@ async function getUsageForActivity(year, month, apiKeyHash) {
 async function getApiKeys() {
   let result;
   try {
-    result = await fetchFromOpenRouter(`/keys`);
+    // OpenRouter's documented list-keys response is a single `data` array
+    // (there is no pagination cursor). Include disabled keys so historical
+    // usage does not disappear if a key was later revoked.
+    result = await fetchFromOpenRouter(`/keys`, "include_disabled=true");
   } catch (err) {
     throw new Error(
       `Unable to list API keys. The management key needs /keys read scope: ${err.message}`
@@ -285,7 +286,9 @@ async function getApiKeys() {
         : typeof key.name === "string" && key.name.trim()
           ? key.name
           : "Unnamed key";
-    return { label, hash: key.hash };
+    const usageDaily = typeof key.usage_daily === "number" ? key.usage_daily : null;
+    const usageMonthly = typeof key.usage_monthly === "number" ? key.usage_monthly : null;
+    return { label, hash: key.hash, usageDaily, usageMonthly };
   });
 }
 
@@ -293,14 +296,32 @@ async function getUsage(year, month) {
   // The unfiltered query remains the canonical source of legacy totals.
   const usage = await getUsageForActivity(year, month);
   if (!monthIntersectsActivityWindow(year, month)) {
-    return { ...usage, apiKeys: [] };
+    return { ...usage, apiKeys: [], apiKeysStatus: "not_queried" };
   }
 
   const apiKeys = [];
-  for (const apiKey of await getApiKeys()) {
-    apiKeys.push({ ...apiKey, ...(await getUsageForActivity(year, month, apiKey.hash)) });
+  const keys = await getApiKeys();
+  const now = new Date();
+  const isCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth() + 1;
+  const today = formatDateUTC(now);
+  for (const apiKey of keys) {
+    const { usageDaily, usageMonthly, ...keyIdentity } = apiKey;
+    const completedUsage = await getUsageForActivity(year, month, apiKey.hash);
+    apiKeys.push({
+      ...keyIdentity,
+      ...completedUsage,
+      // This is deliberately cost-only: /keys does not provide a per-model or
+      // token breakdown for the still-open UTC day. It is not part of totalCost,
+      // which remains the sum of completed /activity days.
+      currentDay:
+        isCurrentMonth && usageDaily !== null
+          ? { date: today, partial: true, cost: usageDaily, source: "keys.usage_daily" }
+          : null,
+      usageMonthly:
+        usageMonthly !== null ? { cost: usageMonthly, source: "keys.usage_monthly" } : null,
+    });
   }
-  return { ...usage, apiKeys };
+  return { ...usage, apiKeys, apiKeysStatus: keys.length === 0 ? "empty" : "ok" };
 }
 
 async function getBalance() {

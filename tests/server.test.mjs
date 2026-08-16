@@ -263,6 +263,7 @@ describe("getUsage", () => {
     expect(result.days).toEqual([]);
     expect(result.yesterday).toBeNull();
     expect(result.currentDay).toBeNull();
+    expect(result.apiKeysStatus).toBe("not_queried");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -344,7 +345,7 @@ describe("getUsage", () => {
     expect(result.days).toEqual([]);
   });
 
-  it("includes and marks today's incomplete OpenRouter activity bucket", async () => {
+  it("never queries /activity for today", async () => {
     const now = new Date();
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth() + 1;
@@ -358,14 +359,12 @@ describe("getUsage", () => {
       mockFetch.mock.calls.some(
         ([url]) => url.pathname === "/api/v1/activity" && url.searchParams.get("date") === todayStr
       )
-    ).toBe(true);
-    expect(result.currentDay).toEqual(expect.objectContaining({ date: todayStr, partial: true }));
-    expect(result.days.find((day) => day.date === todayStr)).toEqual(
-      expect.objectContaining({ partial: true })
-    );
+    ).toBe(false);
+    expect(result.currentDay).toBeNull();
+    expect(result.days.find((day) => day.date === todayStr)).toBeUndefined();
   });
 
-  it("includes today's partial usage in the per-key breakdown", async () => {
+  it("uses /keys usage_daily for cost-only current-day per-key usage", async () => {
     const now = new Date();
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth() + 1;
@@ -376,7 +375,10 @@ describe("getUsage", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ data: [{ label: "Today only", hash: "today-key" }] }),
+          text: async () =>
+            JSON.stringify({
+              data: [{ label: "Today only", hash: "today-key", usage_daily: 0.01 }],
+            }),
         };
       }
       const isToday = url.searchParams.get("date") === todayStr;
@@ -407,11 +409,23 @@ describe("getUsage", () => {
     expect(result.apiKeys).toEqual([
       expect.objectContaining({
         label: "Today only",
-        totalRequests: 1,
-        totalCost: 0.01,
-        currentDay: expect.objectContaining({ date: todayStr, partial: true, cost: 0.01 }),
+        totalRequests: 0,
+        totalCost: 0,
+        currentDay: {
+          date: todayStr,
+          partial: true,
+          cost: 0.01,
+          source: "keys.usage_daily",
+        },
       }),
     ]);
+    expect(
+      mockFetch.mock.calls.some(
+        ([url]) => url.pathname === "/api/v1/activity" && url.searchParams.get("date") === todayStr
+      )
+    ).toBe(false);
+    const keysUrl = mockFetch.mock.calls.find(([url]) => url.pathname === "/api/v1/keys")[0];
+    expect(keysUrl.searchParams.get("include_disabled")).toBe("true");
   });
 
   it("adds a safe per-ordinary-API-key breakdown without changing aggregate totals", async () => {
@@ -483,6 +497,14 @@ describe("getUsage", () => {
     await expect(getUsage(now.getUTCFullYear(), now.getUTCMonth() + 1)).rejects.toThrow(
       "/keys read scope"
     );
+  });
+
+  it("identifies a valid empty key list instead of reporting zero per-key spend", async () => {
+    const now = new Date();
+    setupFetchMock({ body: JSON.stringify({ data: [] }) });
+    const result = await getUsage(now.getUTCFullYear(), now.getUTCMonth() + 1);
+    expect(result.apiKeys).toEqual([]);
+    expect(result.apiKeysStatus).toBe("empty");
   });
 });
 

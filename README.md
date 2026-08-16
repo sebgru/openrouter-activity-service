@@ -16,9 +16,11 @@ Returns per-model usage data for the requested month (aggregated from OpenRouter
 
 Existing aggregate fields continue to come from the unfiltered account activity
 query. `apiKeys` adds the same usage shape for each ordinary API key, obtained
-by listing the account keys and querying activity using the OpenRouter key hash.
+by listing the account keys with `include_disabled=true` and querying activity
+using the OpenRouter key hash.
 It contains only the label and hash returned by OpenRouter, never an API-key
-secret. Per-key activity is limited to OpenRouter's last-30-days window.
+secret. Per-key activity is limited to OpenRouter's last-30-days window. The
+documented `/keys` response is a single data array, so no pagination is used.
 
 **Response:**
 
@@ -29,6 +31,7 @@ secret. Per-key activity is limited to OpenRouter's last-30-days window.
   "totalCompletionTokens": 150000,
   "totalReasoningTokens": 5000,
   "totalCost": 42.5,
+  "apiKeysStatus": "ok",
   "apiKeys": [
     {
       "label": "OpenClaw",
@@ -38,7 +41,16 @@ secret. Per-key activity is limited to OpenRouter's last-30-days window.
       "models": [],
       "days": [],
       "yesterday": null,
-      "currentDay": null
+      "currentDay": {
+        "date": "2026-05-31",
+        "partial": true,
+        "cost": 0.42,
+        "source": "keys.usage_daily"
+      },
+      "usageMonthly": {
+        "cost": 12.34,
+        "source": "keys.usage_monthly"
+      }
     }
   ],
   "models": [
@@ -113,7 +125,17 @@ secret. Per-key activity is limited to OpenRouter's last-30-days window.
 }
 ```
 
-`days` contains the requested month dates that are still available from OpenRouter's last-30-days activity window. Today's UTC bucket is included and has `"partial": true`, because its activity is still accumulating; therefore the current month's totals (including each `apiKeys` entry) also include partial current-day data. `currentDay` is that bucket, or `null` when the requested month is not the current UTC month. `yesterday` is the matching completed daily bucket when yesterday falls in the requested month and activity window; otherwise it is `null`.
+`days`, `yesterday`, and all aggregate totals contain only completed UTC days.
+The service never calls `/activity` for today because OpenRouter rejects that
+date. For an ordinary key in the current month, `currentDay` is instead a
+cost-only partial bucket from that key's `/keys` `usage_daily` field. It has no
+request, token, model, or provider breakdown and is deliberately excluded from
+that key's `totalCost`. `usageMonthly`, when OpenRouter supplies it, is the
+unchanged `/keys` `usage_monthly` cost and may include the current partial day.
+
+`apiKeysStatus` is `"ok"` when the key list contains entries, `"empty"` when
+OpenRouter returned a valid empty key list (not a zero-spend result), and
+`"not_queried"` when the requested month is outside the activity window.
 
 ### GET `/balance`
 
