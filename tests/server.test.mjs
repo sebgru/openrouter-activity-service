@@ -344,6 +344,65 @@ describe("multi-account support", () => {
       { account: "work", totalCredits: 250, totalUsage: 50, remainingCredits: 200 },
     ]);
   });
+
+  it("keeps aggregating balances when one account fails, and reports its error", async () => {
+    mockFetch.mockImplementation(async (_url, options) => {
+      const isPersonal = options.headers.Authorization === "Bearer personal-token";
+      if (!isPersonal) {
+        return { ok: false, status: 500, text: async () => "upstream failure" };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ data: { total_credits: 100, total_usage: 25 } }),
+      };
+    });
+
+    const result = await getBalance();
+
+    expect(result.totalCredits).toBe(100);
+    expect(result.totalUsage).toBe(25);
+    expect(result.remainingCredits).toBe(75);
+    expect(result.accounts).toEqual([
+      { account: "personal", totalCredits: 100, totalUsage: 25, remainingCredits: 75 },
+      { account: "work", error: expect.stringContaining("upstream failure") },
+    ]);
+    expect(result.errors).toEqual([
+      { account: "work", error: expect.stringContaining("upstream failure") },
+    ]);
+  });
+});
+
+describe("getTokenAccounts validation", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("throws when OPENROUTER_MGMT_TOKEN_FILES is not valid JSON", () => {
+    vi.stubEnv("OPENROUTER_MGMT_TOKEN_FILES", "{not valid json");
+    expect(() => getTokenAccounts()).toThrow("OPENROUTER_MGMT_TOKEN_FILES must be valid JSON");
+  });
+
+  it("throws when OPENROUTER_MGMT_TOKEN_FILES is not a JSON object", () => {
+    vi.stubEnv("OPENROUTER_MGMT_TOKEN_FILES", JSON.stringify(["personal", "work"]));
+    expect(() => getTokenAccounts()).toThrow(
+      "OPENROUTER_MGMT_TOKEN_FILES must be a JSON object mapping labels to files"
+    );
+  });
+
+  it("throws when an entry has an empty label or a non-string/empty file", () => {
+    vi.stubEnv("OPENROUTER_MGMT_TOKEN_FILES", JSON.stringify({ "": "/run/secrets/token" }));
+    expect(() => getTokenAccounts()).toThrow(
+      "OPENROUTER_MGMT_TOKEN_FILES must map non-empty labels to non-empty file paths"
+    );
+  });
+
+  it("throws when OPENROUTER_MGMT_TOKEN_FILES is an empty object", () => {
+    vi.stubEnv("OPENROUTER_MGMT_TOKEN_FILES", JSON.stringify({}));
+    expect(() => getTokenAccounts()).toThrow(
+      "OPENROUTER_MGMT_TOKEN_FILES must contain at least one account"
+    );
+  });
 });
 
 // ── getUsage ─────────────────────────────────────────────────────────────────
@@ -488,6 +547,17 @@ describe("HTTP routes", () => {
     const { status, body } = await httpGet(baseUrl, "/health");
     expect(status).toBe(200);
     expect(body.token_loaded).toBe(false);
+  });
+
+  it("GET /health reports token_config_error when OPENROUTER_MGMT_TOKEN_FILES is invalid", async () => {
+    vi.stubEnv("OPENROUTER_MGMT_TOKEN_FILES", "{not valid json");
+    const { status, body } = await httpGet(baseUrl, "/health");
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.token_loaded).toBe(false);
+    expect(body.accounts).toEqual([]);
+    expect(body.accounts_loaded).toBe(0);
+    expect(body.token_config_error).toMatch(/must be valid JSON/);
   });
 
   // ── /usage ───────────────────────────────────────────────────────────────
