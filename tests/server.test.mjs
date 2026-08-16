@@ -391,15 +391,15 @@ describe("getUsage", () => {
             data:
               isToday && isKey
                 ? [
-                    {
-                      model: "openai/gpt-4.1",
-                      requests: 1,
-                      prompt_tokens: 10,
-                      completion_tokens: 5,
-                      usage: 0.01,
-                      provider_name: "OpenAI",
-                    },
-                  ]
+                  {
+                    model: "openai/gpt-4.1",
+                    requests: 1,
+                    prompt_tokens: 10,
+                    completion_tokens: 5,
+                    usage: 0.01,
+                    provider_name: "OpenAI",
+                  },
+                ]
                 : [],
           }),
       };
@@ -523,6 +523,11 @@ describe("API key helpers", () => {
   it("rejects malformed /keys entries", async () => {
     setupFetchMock({ body: JSON.stringify({ data: [{ label: "No hash" }] }) });
     await expect(getApiKeys()).rejects.toThrow("missing hash");
+  });
+
+  it("rejects a /keys response that is missing the data array", async () => {
+    setupFetchMock({ body: JSON.stringify({ data: "not-an-array" }) });
+    await expect(getApiKeys()).rejects.toThrow("Unexpected response from /keys endpoint");
   });
 });
 
