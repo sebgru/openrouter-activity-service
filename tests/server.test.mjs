@@ -530,6 +530,11 @@ describe("API key helpers", () => {
     setupFetchMock({ body: JSON.stringify({ data: [{ label: "No hash" }] }) });
     await expect(getApiKeys()).rejects.toThrow("missing hash");
   });
+
+  it("rejects a /keys response that is missing the data array", async () => {
+    setupFetchMock({ body: JSON.stringify({ data: "not-an-array" }) });
+    await expect(getApiKeys()).rejects.toThrow("Unexpected response from /keys endpoint");
+  });
 });
 
 // ── HTTP routes (live server) ─────────────────────────────────────────────────
