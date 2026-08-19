@@ -35,6 +35,7 @@ import {
   createServer,
   PORT,
   TOKEN_FILE,
+  WORKSPACE_ID,
 } from "../server.mjs";
 
 // ── HTTPS mock helper ────────────────────────────────────────────────────────
@@ -128,6 +129,10 @@ describe("readToken", () => {
   it("exposes TOKEN_FILE constant", () => {
     expect(typeof TOKEN_FILE).toBe("string");
     expect(TOKEN_FILE.length).toBeGreaterThan(0);
+  });
+
+  it("uses the configured OpenRouter workspace", () => {
+    expect(WORKSPACE_ID).toBe("73823bec-88a6-42e7-a146-0b1aa1ae0de0");
   });
 });
 
@@ -426,6 +431,7 @@ describe("getUsage", () => {
     ).toBe(false);
     const keysUrl = mockFetch.mock.calls.find(([url]) => url.pathname === "/api/v1/keys")[0];
     expect(keysUrl.searchParams.get("include_disabled")).toBe("true");
+    expect(keysUrl.searchParams.get("workspace_id")).toBe(WORKSPACE_ID);
   });
 
   it("adds a safe per-ordinary-API-key breakdown without changing aggregate totals", async () => {

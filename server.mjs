@@ -27,6 +27,7 @@ import { URL, fileURLToPath } from "node:url";
 const PORT = parseInt(process.env.OPENROUTER_ACTIVITY_PORT || "8767", 10);
 const TOKEN_FILE =
   process.env.OPENROUTER_MGMT_TOKEN_FILE || "/run/secrets/openrouter-management-token";
+const WORKSPACE_ID = process.env.OPENROUTER_WORKSPACE_ID || "73823bec-88a6-42e7-a146-0b1aa1ae0de0";
 const API_HOST = "openrouter.ai";
 const KNOWN_PATHS = ["/health", "/usage?year=...&month=...", "/balance"];
 
@@ -265,7 +266,11 @@ async function getApiKeys() {
     // OpenRouter's documented list-keys response is a single `data` array
     // (there is no pagination cursor). Include disabled keys so historical
     // usage does not disappear if a key was later revoked.
-    result = await fetchFromOpenRouter(`/keys`, "include_disabled=true");
+    const query = new URLSearchParams({
+      include_disabled: "true",
+      workspace_id: WORKSPACE_ID,
+    });
+    result = await fetchFromOpenRouter(`/keys`, query.toString());
   } catch (err) {
     throw new Error(
       `Unable to list API keys. The management key needs /keys read scope: ${err.message}`
@@ -420,6 +425,7 @@ export {
   sendError,
   PORT,
   TOKEN_FILE,
+  WORKSPACE_ID,
 };
 
 // ---------- Entry point ----------

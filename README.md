@@ -198,6 +198,7 @@ services:
     environment:
       OPENROUTER_ACTIVITY_PORT: "8767"
       OPENROUTER_MGMT_TOKEN_FILE: /run/secrets/openrouter-management-token
+      OPENROUTER_WORKSPACE_ID: 73823bec-88a6-42e7-a146-0b1aa1ae0de0
     networks:
       - ai-net
 
@@ -216,10 +217,11 @@ curl http://localhost:8767/balance
 
 ## Environment Variables
 
-| Variable                     | Default                                    | Description               |
-| ---------------------------- | ------------------------------------------ | ------------------------- |
-| `OPENROUTER_ACTIVITY_PORT`   | `8767`                                     | HTTP listen port          |
-| `OPENROUTER_MGMT_TOKEN_FILE` | `/run/secrets/openrouter-management-token` | Path to Bearer token file |
+| Variable                     | Default                                    | Description                                     |
+| ---------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| `OPENROUTER_ACTIVITY_PORT`   | `8767`                                     | HTTP listen port                                |
+| `OPENROUTER_MGMT_TOKEN_FILE` | `/run/secrets/openrouter-management-token` | Path to Bearer token file                       |
+| `OPENROUTER_WORKSPACE_ID`    | `73823bec-88a6-42e7-a146-0b1aa1ae0de0`     | OpenRouter workspace used when listing API keys |
 
 ## CI/CD
 
