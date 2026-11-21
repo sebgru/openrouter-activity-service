@@ -3,6 +3,16 @@
   // ── Base image ────────────────────────────────────────────────────────────
   // Standard Microsoft Node.js devcontainer (Node 22 LTS).
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  // ── Features ──────────────────────────────────────────────────────────────
+  // GitHub CLI: uses the host's existing `gh` login (see the .config/gh mount).
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  // ── Users ─────────────────────────────────────────────────────────────────
+  // Run as the image's unprivileged 'node' user so mounted host config lands
+  // in /home/node.
+  "remoteUser": "node",
+  "containerUser": "node",
   // ── Workspace ─────────────────────────────────────────────────────────────
   // Mount the repo at /workspace (instead of the default /workspaces/<name>).
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
@@ -11,7 +21,7 @@
   // Runs on the HOST before the container is created.
   // Creates empty placeholder files/dirs if they don't already exist so the
   // bind mounts below never fail for contributors who don't have these files.
-  "initializeCommand": "mkdir -p ~/.ssh && touch -a ~/.gitconfig ~/.vimrc ~/.profile",
+  "initializeCommand": "mkdir -p ~/.ssh ~/.config/gh && touch -a ~/.gitconfig ~/.vimrc ~/.profile",
   // ── Personal dotfile mounts ───────────────────────────────────────────────
   // .ssh is staged at /tmp/host-ssh; setup.sh copies it with the required
   // 700/600 permissions (bind mounts can't change permissions).
@@ -19,10 +29,16 @@
     "source=${localEnv:HOME}/.gitconfig,target=/tmp/host-gitconfig,type=bind,readonly=true",
     "source=${localEnv:HOME}/.vimrc,target=/home/node/.vimrc,type=bind",
     "source=${localEnv:HOME}/.profile,target=/home/node/.profile-host,type=bind,readonly=true",
-    "source=${localEnv:HOME}/.ssh,target=/tmp/host-ssh,type=bind,readonly=true"
+    "source=${localEnv:HOME}/.ssh,target=/tmp/host-ssh,type=bind,readonly=true",
+    // Reuse the host's gh login: mount ~/.config/gh straight into the
+    // container user's home, so `gh` is authenticated without `gh auth login`.
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.config/gh,target=/home/node/.config/gh,type=bind,consistency=cached"
   ],
   // ── Post-create setup ─────────────────────────────────────────────────────
   "postCreateCommand": "bash /workspace/.devcontainer/setup.sh",
+  // ── Post-start check ──────────────────────────────────────────────────────
+  // Surfaces a clear warning if the host gh login could not be reused.
+  "postStartCommand": "gh auth status || echo 'WARNING: gh is not logged in - run gh auth login'",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -33,7 +49,9 @@
         // Vitest: test explorer
         "vitest.explorer",
         // GitHub Actions syntax support
-        "github.vscode-github-actions"
+        "github.vscode-github-actions",
+        // Claude Code
+        "anthropic.claude-code"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",
