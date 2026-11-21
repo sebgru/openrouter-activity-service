@@ -233,6 +233,13 @@ curl http://localhost:8767/balance
 
 This repository includes a VS Code devcontainer that installs the same local development tools used by CI.
 
+It also installs the [GitHub CLI](https://cli.github.com/) and reuses the host's
+existing `gh` login by bind-mounting `~/.config/gh` into the container. Log in
+once on the host (`gh auth login`) and `gh` works inside the container without
+re-authenticating; if the login cannot be reused, the container prints a warning
+on start. The [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code)
+extension is pre-installed as well.
+
 ```bash
 # Format
 npm run format
