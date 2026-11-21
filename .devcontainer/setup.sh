@@ -42,6 +42,20 @@ else
     echo "  No SSH keys found on host — skipping."
 fi
 
+# ── GitHub CLI credentials ────────────────────────────────────────────────────
+# ~/.config/gh is bind-mounted directly from the host (see devcontainer.json),
+# so the host's `gh` login is reused as-is — no copy step and no
+# re-authentication. A bind mount keeps the host uid, which usually differs
+# from the container user, so grant the container user ownership of the mounted
+# path (otherwise a 0600 hosts.yml is unreadable and gh fails).
+echo "→ Configuring GitHub CLI…"
+if [ -e ~/.config/gh ]; then
+    sudo chown -R "$(id -u):$(id -g)" ~/.config/gh
+    echo "  Host gh config mounted."
+else
+    echo "  No host gh config found — skipping."
+fi
+
 # ── .profile (SSH signing env vars etc.) ──────────────────────────────────────
 # The host .profile is mounted to ~/.profile-host.
 # VS Code terminals start as non-login interactive shells, so ~/.profile is
@@ -66,3 +80,5 @@ echo "   Workspace : /workspace"
 echo "   Node      : $(node --version)"
 echo "   npm       : $(npm --version)"
 echo "   vitest    : $(npx vitest --version 2>&1 | head -1)"
+echo "   gh        : $(gh --version 2>&1 | head -1)"
+echo "   gh auth   : $(gh auth status 2>&1 | head -1 || true)"
