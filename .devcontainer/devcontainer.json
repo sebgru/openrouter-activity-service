@@ -6,7 +6,11 @@
   // ── Features ──────────────────────────────────────────────────────────────
   // GitHub CLI: uses the host's existing `gh` login (see the .config/gh mount).
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // Docker CLI + daemon + Compose: the repo ships a Dockerfile and
+    // compose-addendum.yml, and CI builds/scans the image (docker-image.yml,
+    // security-scan in ci.yml). Docker-in-Docker keeps it self-contained.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   // ── Users ─────────────────────────────────────────────────────────────────
   // Run as the image's unprivileged 'node' user so mounted host config lands
@@ -50,6 +54,10 @@
         "vitest.explorer",
         // GitHub Actions syntax support
         "github.vscode-github-actions",
+        // Dockerfile / Compose support
+        "ms-azuretools.vscode-docker",
+        // ShellCheck for setup.sh and other shell scripts
+        "timonwong.shellcheck",
         // Claude Code
         "anthropic.claude-code"
       ],
