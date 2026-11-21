@@ -4,8 +4,19 @@
 set -euo pipefail
 
 # ── System packages ───────────────────────────────────────────────────────────
-echo "→ Installing system packages (vim)…"
-sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends vim
+echo "→ Installing system packages (vim, shellcheck)…"
+sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends vim shellcheck
+
+# ── Security tooling ──────────────────────────────────────────────────────────
+# Trivy is used by the security-scan CI job (ci.yml); installing it locally lets
+# contributors reproduce the image scan before pushing. Skip if already present.
+if ! command -v trivy >/dev/null 2>&1; then
+    echo "→ Installing Trivy…"
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+        | sudo sh -s -- -b /usr/local/bin
+else
+    echo "→ Trivy already installed — skipping."
+fi
 
 # ── Dev tools ─────────────────────────────────────────────────────────────────
 echo "→ Installing dev tools (npm install)…"
@@ -38,6 +49,20 @@ if [ -d /tmp/host-ssh ] && [ -n "$(ls -A /tmp/host-ssh 2>/dev/null)" ]; then
     chmod 700 ~/.ssh
     find ~/.ssh -type f -exec chmod 600 {} \;
     echo "  SSH keys installed."
+
+    # The host's OpenSSH client may be newer than the container's (Debian 13
+    # ships OpenSSH 10.0), so the host config can use options this client
+    # rejects (e.g. WarnWeakCrypto), which breaks every ssh/git operation.
+    # Probe the config and comment out unsupported option lines one by one.
+    if [ -f ~/.ssh/config ]; then
+        for _ in 1 2 3 4 5; do
+            bad_opt=$(ssh -G -F ~/.ssh/config github.com 2>&1 >/dev/null \
+                | sed -n 's/.*Bad configuration option: *//p' | head -1)
+            [ -z "$bad_opt" ] && break
+            echo "  Disabling unsupported ssh option: $bad_opt"
+            sed -i -E "s/^([[:space:]]*)(${bad_opt})([[:space:]]|$)/\1# \2\3/I" ~/.ssh/config
+        done
+    fi
 else
     echo "  No SSH keys found on host — skipping."
 fi
@@ -76,9 +101,13 @@ fi
 
 echo ""
 echo "✅ Container setup complete."
-echo "   Workspace : /workspace"
-echo "   Node      : $(node --version)"
-echo "   npm       : $(npm --version)"
-echo "   vitest    : $(npx vitest --version 2>&1 | head -1)"
-echo "   gh        : $(gh --version 2>&1 | head -1)"
-echo "   gh auth   : $(gh auth status 2>&1 | head -1 || true)"
+echo "   Workspace  : /workspace"
+echo "   Node       : $(node --version)"
+echo "   npm        : $(npm --version)"
+echo "   vitest     : $(npx vitest --version 2>&1 | head -1)"
+echo "   gh         : $(gh --version 2>&1 | head -1)"
+echo "   gh auth    : $(gh auth status 2>&1 | head -1 || true)"
+echo "   docker     : $(docker --version 2>/dev/null || echo 'not available')"
+echo "   compose    : $(docker compose version 2>/dev/null | head -1 || echo 'not available')"
+echo "   shellcheck : $(shellcheck --version 2>/dev/null | sed -n 's/^version: //p' || echo 'not installed')"
+echo "   trivy      : $(trivy --version 2>/dev/null | head -1 || echo 'not installed')"
